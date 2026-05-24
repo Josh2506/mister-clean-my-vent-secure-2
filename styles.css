@@ -505,6 +505,19 @@ textarea {
   display: none;
 }
 
+.form-status {
+  min-height: 28px;
+  margin: 2px 0 0;
+  color: var(--forest);
+  font-weight: 900;
+  line-height: 1.45;
+}
+
+.button:disabled {
+  opacity: 0.68;
+  cursor: wait;
+}
+
 input:focus,
 textarea:focus {
   outline: 3px solid rgba(217, 162, 63, 0.28);
