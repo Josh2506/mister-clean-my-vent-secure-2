@@ -501,10 +501,48 @@ textarea {
   resize: vertical;
 }
 
+.hidden-field {
+  display: none;
+}
+
 input:focus,
 textarea:focus {
   outline: 3px solid rgba(217, 162, 63, 0.28);
   border-color: var(--lime);
+}
+
+.thank-you-page {
+  min-height: 100svh;
+  color: var(--cream);
+  background:
+    linear-gradient(135deg, rgba(19, 33, 13, 0.96), rgba(36, 79, 20, 0.96)),
+    repeating-linear-gradient(115deg, rgba(150, 191, 32, 0.13) 0 2px, transparent 2px 34px);
+}
+
+.thank-you {
+  width: min(820px, calc(100% - 36px));
+  min-height: 100svh;
+  display: grid;
+  align-content: center;
+  margin: 0 auto;
+  padding: 72px 0;
+}
+
+.thank-you-logo {
+  width: min(430px, 86vw);
+  height: auto;
+  margin-bottom: 26px;
+  filter: drop-shadow(0 18px 26px rgba(0, 0, 0, 0.36));
+}
+
+.thank-you h1 {
+  margin-bottom: 18px;
+}
+
+.thank-you p:not(.eyebrow) {
+  max-width: 620px;
+  color: rgba(255, 251, 232, 0.84);
+  font-size: 1.16rem;
 }
 
 .site-footer {

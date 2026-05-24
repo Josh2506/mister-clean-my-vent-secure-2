@@ -161,7 +161,11 @@
             Email: <a href="mailto:mistercleanmyvent@gmail.com">mistercleanmyvent@gmail.com</a>
           </address>
         </div>
-        <form class="quote-form" action="mailto:mistercleanmyvent@gmail.com" method="post" enctype="text/plain">
+        <form class="quote-form" name="appointment" action="/thank-you.html" method="post" data-netlify="true" netlify-honeypot="bot-field">
+          <input type="hidden" name="form-name" value="appointment">
+          <p class="hidden-field">
+            <label>Do not fill this out if you're human: <input name="bot-field"></label>
+          </p>
           <label>
             Name
             <input name="name" autocomplete="name" required>
