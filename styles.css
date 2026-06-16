@@ -769,6 +769,7 @@ label {
 }
 
 input,
+select,
 textarea {
   width: 100%;
   border: 1px solid rgba(19, 33, 13, 0.2);
@@ -777,6 +778,10 @@ textarea {
   color: var(--ink);
   font: inherit;
   background: #fffdf1;
+}
+
+select {
+  min-height: 52px;
 }
 
 textarea {
@@ -801,6 +806,7 @@ textarea {
 }
 
 input:focus,
+select:focus,
 textarea:focus {
   outline: 3px solid rgba(217, 162, 63, 0.28);
   border-color: var(--lime);

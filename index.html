@@ -306,9 +306,9 @@
       <section class="quote-section" id="quote">
         <div class="quote-copy">
           <p class="eyebrow">Book service</p>
-          <h2>Ready to Book Your Dryer Vent Cleaning?</h2>
+          <h2>Ready to Get Your Home Clean and Safe?</h2>
           <p>
-            Send a few details below and Mister Clean My Vent LLC will follow up with scheduling, pricing, and availability. Whether you're dealing with long dry times, lint buildup, or just due for maintenance, Mister Clean My Vent is here to help!
+            Send a few details below and Mister Clean My Vent LLC will follow up with scheduling, pricing, and availability. Whether you need dryer vent cleaning, gutter cleaning, gutter guards, house washing, driveway cleaning, patio cleaning, or exterior surface cleaning, we're here to help. Most dryer vent cleanings can be scheduled directly, while larger exterior cleaning projects may require a free estimate.
           </p>
           <address>
             Serving: New Jersey<br>
@@ -342,8 +342,25 @@
             <input name="address" autocomplete="street-address">
           </label>
           <label>
+            Service Needed
+            <select name="service-needed" required>
+              <option value="">Select a service</option>
+              <option>Dryer Vent Cleaning</option>
+              <option>Bird Nest Removal</option>
+              <option>Dryer Vent Inspection</option>
+              <option>Gutter Cleaning</option>
+              <option>Gutter Guard Installation</option>
+              <option>House Wash</option>
+              <option>Driveway Cleaning</option>
+              <option>Patio Cleaning</option>
+              <option>Sidewalk Cleaning</option>
+              <option>Multiple Services</option>
+              <option>Not Sure / Need Recommendation</option>
+            </select>
+          </label>
+          <label>
             Optional Message
-            <textarea name="message" rows="4" placeholder="Long dry times, annual cleaning, dryer in basement, first floor, or second floor, exterior vent issue, gutter cleaning, house wash..."></textarea>
+            <textarea name="message" rows="4" placeholder="Tell us what's needed (dryer taking longer to dry, annual cleaning, gutters overflowing, house wash, driveway cleaning, multiple services, etc.)"></textarea>
           </label>
           <button class="button primary" type="submit">Book Appointment</button>
           <p class="form-status" role="status" aria-live="polite"></p>
