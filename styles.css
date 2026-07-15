@@ -348,10 +348,15 @@ p {
   font-size: 1.06rem;
 }
 
-.service-grid {
+.service-grid,
+.service-groups {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
+}
+
+.service-groups {
+  grid-template-columns: 1fr;
 }
 
 .section-cta {
@@ -362,12 +367,43 @@ p {
 }
 
 .service-card,
+.service-group,
 .steps article {
   padding: 25px;
   background: var(--panel);
   border: 2px solid rgba(79, 127, 24, 0.18);
   border-radius: 8px;
   box-shadow: 0 12px 34px rgba(19, 33, 13, 0.08);
+}
+
+.service-group.featured-service {
+  border-color: rgba(150, 191, 32, 0.42);
+}
+
+.service-group ul {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0;
+  margin: 18px 0 0;
+  list-style: none;
+}
+
+.service-group li {
+  position: relative;
+  padding-left: 24px;
+  color: var(--forest);
+  font-weight: 850;
+  line-height: 1.45;
+}
+
+.service-group li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--moss);
+  font-weight: 900;
 }
 
 .service-icon {
@@ -433,13 +469,13 @@ p {
 .certificate-note {
   margin: 18px 0 0;
   padding: 14px 15px;
-  color: var(--cream);
+  color: var(--forest);
   font-weight: 800;
   line-height: 1.5;
-  border: 1px solid rgba(255, 247, 201, 0.22);
-  border-left: 5px solid var(--gold);
+  border: 1px solid rgba(79, 127, 24, 0.24);
+  border-left: 5px solid var(--lime);
   border-radius: 8px;
-  background: rgba(255, 247, 201, 0.08);
+  background: rgba(255, 251, 232, 0.88);
 }
 
 .summer-services {
@@ -527,6 +563,43 @@ p {
   color: var(--cream);
   font-size: 0.88rem;
   font-weight: 900;
+}
+
+.before-after-gallery {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  max-width: 880px;
+  margin-top: 20px;
+}
+
+.before-after-card {
+  overflow: hidden;
+  border: 1px solid rgba(255, 247, 201, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 247, 201, 0.08);
+}
+
+.before-after-card img {
+  display: block;
+  width: 100%;
+  height: clamp(170px, 21vw, 245px);
+  object-fit: contain;
+  background: rgba(9, 20, 7, 0.28);
+}
+
+.before-after-card div {
+  padding: 14px;
+}
+
+.before-after-card h3 {
+  margin-bottom: 8px;
+  font-size: 1.05rem;
+}
+
+.before-after-card p {
+  margin-bottom: 0;
+  font-size: 0.92rem;
 }
 
 .warning-section {
@@ -852,8 +925,19 @@ textarea:focus {
 
 .faq-list {
   display: grid;
-  gap: 14px;
+  gap: 22px;
   max-width: 980px;
+}
+
+.faq-group {
+  display: grid;
+  gap: 12px;
+}
+
+.faq-group h3 {
+  margin: 8px 0 2px;
+  color: var(--forest);
+  font-size: clamp(1.3rem, 2.4vw, 1.85rem);
 }
 
 .faq-list details {
@@ -938,7 +1022,8 @@ textarea:focus {
 @media (max-width: 760px) {
   .problem-grid,
   .summer-photo-grid,
-  .summer-photo-grid.two-up {
+  .summer-photo-grid.two-up,
+  .before-after-gallery {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -991,12 +1076,20 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 
+  .service-group ul {
+    grid-template-columns: 1fr;
+  }
+
   .summer-feature {
     grid-template-columns: 1fr;
   }
 
   .summer-photo-grid {
     justify-self: stretch;
+    max-width: none;
+  }
+
+  .before-after-gallery {
     max-width: none;
   }
 
@@ -1066,11 +1159,16 @@ textarea:focus {
   }
 
   .summer-photo-grid,
-  .summer-photo-grid.two-up {
+  .summer-photo-grid.two-up,
+  .before-after-gallery {
     grid-template-columns: 1fr;
   }
 
   .summer-photo-grid img {
+    height: 190px;
+  }
+
+  .before-after-card img {
     height: 190px;
   }
 
