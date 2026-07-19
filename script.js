@@ -38,7 +38,7 @@ appointmentForm?.addEventListener("submit", async (event) => {
     }
 
     appointmentForm.reset();
-    formStatus.textContent = "Thank you. Your request was sent, and Mister Clean My Vent LLC will follow up soon.";
+    window.location.assign("/thank-you.html");
   } catch {
     formStatus.textContent = "Something went wrong. Please call or text (732) 626-0685.";
   } finally {

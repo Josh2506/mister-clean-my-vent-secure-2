@@ -240,6 +240,16 @@ p {
   font-size: 1.17rem;
 }
 
+.hero-slogan {
+  max-width: 640px;
+  margin-bottom: 16px;
+  color: var(--gold);
+  font-size: clamp(1.15rem, 2.3vw, 1.75rem);
+  font-weight: 900;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
 .service-area {
   max-width: 650px;
   margin-bottom: 0;
