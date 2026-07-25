@@ -31,9 +31,16 @@ function escapeHtml(value) {
 }
 
 async function api(path, options = {}) {
-  const response = await fetch(path, {
+  const method = options.method || "GET";
+  const requestPath = method === "GET" ? `${path}${path.includes("?") ? "&" : "?"}_=${Date.now()}` : path;
+  const response = await fetch(requestPath, {
+    cache: "no-store",
     credentials: "same-origin",
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    headers: {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
     ...options,
   });
   const data = await response.json().catch(() => ({}));
@@ -106,6 +113,7 @@ function showLogin(message = "") {
       submit.disabled = false;
     }
   });
+  bindMobileInputFocus(app);
 }
 
 function shell() {
@@ -149,6 +157,7 @@ function shell() {
       switchScreen(button.dataset.screen);
     });
   });
+  bindMobileInputFocus(app);
 }
 
 function setModalLock() {
@@ -161,6 +170,19 @@ function focusFirstEditableField(form) {
   if (firstInput && window.matchMedia("(min-width: 821px)").matches) {
     window.setTimeout(() => firstInput.focus(), 80);
   }
+}
+
+function bindMobileInputFocus(root = document) {
+  const editableFields = root.querySelectorAll("input:not([type='hidden']):not([disabled]), textarea:not([disabled]), select:not([disabled])");
+  editableFields.forEach((fieldElement) => {
+    if (fieldElement.dataset.mobileFocusBound === "true") {
+      return;
+    }
+    fieldElement.dataset.mobileFocusBound = "true";
+    fieldElement.addEventListener("touchend", () => {
+      window.setTimeout(() => fieldElement.focus({ preventScroll: true }), 0);
+    }, { passive: true });
+  });
 }
 
 function renderDashboard() {
@@ -206,11 +228,17 @@ function renderCustomers() {
       <div class="crm-actions">
         <input id="customer-search" type="search" placeholder="Search customers..." aria-label="Search customers">
         <button class="crm-btn" type="button" id="customer-add">Add Customer</button>
+        <button class="crm-btn secondary" type="button" id="customer-refresh">Refresh</button>
       </div>
     </div>
     <div class="crm-list" id="customer-list">${renderCustomerCards(state.customers)}</div>
   `;
   document.querySelector("#customer-add").addEventListener("click", () => openCustomerModal());
+  document.querySelector("#customer-refresh").addEventListener("click", async () => {
+    await loadData();
+    switchScreen("customers");
+    showNotice("Customer list refreshed from Google Sheets.");
+  });
   document.querySelector("#customer-search").addEventListener("input", (event) => {
     const search = event.target.value.toLowerCase();
     const filtered = state.customers.filter((customer) => [
@@ -227,6 +255,7 @@ function renderCustomers() {
     bindCustomerButtons();
   });
   bindCustomerButtons();
+  bindMobileInputFocus(document.querySelector("#screen-customers"));
 }
 
 function renderDue() {
@@ -417,6 +446,7 @@ function openCustomerModal(customer = null) {
   setModalLock();
   const form = modal.querySelector("#customer-form");
   focusFirstEditableField(form);
+  bindMobileInputFocus(form);
   modal.querySelector("[data-close-modal]").addEventListener("click", () => closeModal(modal));
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -478,6 +508,7 @@ function openJobModal(customer) {
   setModalLock();
   const form = modal.querySelector("#job-form");
   focusFirstEditableField(form);
+  bindMobileInputFocus(form);
   modal.querySelector("[data-close-modal]").addEventListener("click", () => closeModal(modal));
   form.addEventListener("submit", async (event) => {
     event.preventDefault();

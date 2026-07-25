@@ -288,7 +288,10 @@ textarea {
   border-radius: var(--crm-radius);
   background: #fff;
   color: var(--crm-ink);
-  touch-action: manipulation;
+  touch-action: auto;
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: text;
 }
 
 .crm-field textarea {

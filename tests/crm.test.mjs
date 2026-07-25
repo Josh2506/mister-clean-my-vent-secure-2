@@ -14,6 +14,7 @@ const dashboard = require("../netlify/functions/crm-dashboard.js");
 const jobs = require("../netlify/functions/crm-jobs.js");
 const login = require("../netlify/functions/crm-login.js");
 const records = require("../netlify/functions/_shared/crm-records.js");
+const googleSheets = require("../netlify/functions/_shared/google-sheets.js");
 
 const passwordHash = auth.createPasswordHash("correct-horse-password");
 process.env.CRM_ADMIN_PASSWORD_HASH = passwordHash;
@@ -56,6 +57,14 @@ assert.equal(records.customerToClient(customer).name, "Joshua");
 assert.equal(records.hasCustomerData({}), false, "blank customer sheet rows should be ignored");
 assert.equal(records.hasCustomerData({ "Customer ID": "cus_blank_only" }), false, "ID-only customer rows should be ignored");
 assert.equal(records.hasCustomerData(customer), true, "real customer sheet rows should be included");
+
+const shiftedCustomerRows = [
+  ["Customer ID", "Phone", "First Name", "Last Name", "Archived"],
+  ["cus_shifted", "7326260685", "Jane", "Customer", "FALSE"],
+];
+const shiftedCustomer = googleSheets.valuesToRecords(shiftedCustomerRows, "Customers")[0];
+assert.equal(shiftedCustomer["First Name"], "Jane", "customer rows should follow Google Sheet headers");
+assert.equal(shiftedCustomer.Phone, "7326260685", "customer phone should follow Google Sheet headers");
 
 const job = records.jobFromBody({
   customerId: customer["Customer ID"],

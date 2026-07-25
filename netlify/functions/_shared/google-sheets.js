@@ -108,12 +108,48 @@ function getTabHeaders(tabName) {
   return headers;
 }
 
+const headerAliases = {
+  "Street Address": ["Address", "Service Address"],
+  "ZIP Code": ["Zip", "Zip Code", "Postal Code"],
+  "Preferred Contact Method": ["Preferred Contact"],
+  "Customer Status": ["Status"],
+  "General Notes": ["Notes"],
+  "Job Status": ["Status"],
+  "Technician Notes": ["Notes"],
+};
+
+function normalizeHeader(header) {
+  return String(header || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function buildHeaderIndex(actualHeaders, expectedHeaders) {
+  const actualIndex = new Map();
+  actualHeaders.forEach((header, index) => {
+    actualIndex.set(normalizeHeader(header), index);
+  });
+
+  const expectedHeaderKeys = expectedHeaders.flatMap((header) => [header, ...(headerAliases[header] || [])].map(normalizeHeader));
+  const hasUsableHeaderRow = expectedHeaderKeys.some((key) => actualIndex.has(key));
+  if (!hasUsableHeaderRow) {
+    return null;
+  }
+
+  return expectedHeaders.map((header, fallbackIndex) => {
+    const names = [header, ...(headerAliases[header] || [])];
+    const matchedName = names.find((name) => actualIndex.has(normalizeHeader(name)));
+    return matchedName ? actualIndex.get(normalizeHeader(matchedName)) : fallbackIndex;
+  });
+}
+
 function valuesToRecords(values = [], tabName) {
   const headers = getTabHeaders(tabName);
+  const actualHeaders = values[0] || [];
+  const headerIndexes = buildHeaderIndex(actualHeaders, headers) || headers.map((_, index) => index);
+
   return values.slice(1).map((row, index) => {
     const record = { rowNumber: index + 2 };
     headers.forEach((header, headerIndex) => {
-      record[header] = row[headerIndex] || "";
+      record[header] = row[headerIndexes[headerIndex]] || "";
     });
     return record;
   });
@@ -161,5 +197,5 @@ module.exports = {
   getRows,
   getTabHeaders,
   updateRecord,
+  valuesToRecords,
 };
-
