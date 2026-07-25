@@ -1,6 +1,6 @@
 const { requireSession } = require("./_shared/auth");
 const { appendRecord, findRecordById, getRows, updateRecord } = require("./_shared/google-sheets");
-const { isArchived, jobFromBody, jobToClient } = require("./_shared/crm-records");
+const { hasJobData, isArchived, jobFromBody, jobToClient } = require("./_shared/crm-records");
 const { json, readJson } = require("./_shared/http");
 
 exports.handler = async function handler(event) {
@@ -14,6 +14,7 @@ exports.handler = async function handler(event) {
       const customerId = event.queryStringParameters?.customerId || "";
       const rows = await getRows("Jobs");
       const jobs = rows
+        .filter(hasJobData)
         .filter((row) => !isArchived(row))
         .filter((row) => !customerId || row["Customer ID"] === customerId)
         .map(jobToClient)
@@ -31,6 +32,9 @@ exports.handler = async function handler(event) {
     if (event.httpMethod === "PUT") {
       const body = readJson(event);
       const jobId = body.jobId || body.id;
+      if (!jobId) {
+        return json(400, { error: "Job ID is required." });
+      }
       const existing = await findRecordById("Jobs", "Job ID", jobId);
       if (!existing) {
         return json(404, { error: "Job not found." });
@@ -42,6 +46,9 @@ exports.handler = async function handler(event) {
 
     if (event.httpMethod === "DELETE") {
       const jobId = event.queryStringParameters?.id;
+      if (!jobId) {
+        return json(400, { error: "Job ID is required." });
+      }
       const existing = await findRecordById("Jobs", "Job ID", jobId);
       if (!existing) {
         return json(404, { error: "Job not found." });
@@ -56,4 +63,3 @@ exports.handler = async function handler(event) {
     return json(error.statusCode || 500, { error: error.message || "CRM job request failed." });
   }
 };
-

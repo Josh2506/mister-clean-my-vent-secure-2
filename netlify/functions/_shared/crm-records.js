@@ -20,6 +20,35 @@ function isArchived(record) {
   return String(record.Archived || "").toUpperCase() === "TRUE";
 }
 
+function hasCustomerData(record) {
+  return [
+    "Customer ID",
+    "First Name",
+    "Last Name",
+    "Phone",
+    "Email",
+    "Street Address",
+    "City",
+    "ZIP Code",
+    "Lead Source",
+    "General Notes",
+  ].some((field) => clean(record[field]));
+}
+
+function hasJobData(record) {
+  return [
+    "Job ID",
+    "Customer ID",
+    "Appointment Date",
+    "Service Type",
+    "Service Description",
+    "Quoted Price",
+    "Final Price",
+    "Technician Notes",
+    "Next Service Date",
+  ].some((field) => clean(record[field]));
+}
+
 function normalizePhone(value) {
   const digits = clean(value).replace(/\D/g, "");
   if (digits.length === 10) {
@@ -156,6 +185,8 @@ module.exports = {
   customerFromBody,
   customerToClient,
   dateDiffDays,
+  hasCustomerData,
+  hasJobData,
   id,
   isArchived,
   jobFromBody,
@@ -163,4 +194,3 @@ module.exports = {
   nowIso,
   todayDate,
 };
-

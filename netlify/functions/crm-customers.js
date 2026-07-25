@@ -1,6 +1,6 @@
 const { requireSession } = require("./_shared/auth");
 const { appendRecord, findRecordById, getRows, updateRecord } = require("./_shared/google-sheets");
-const { customerFromBody, customerToClient, isArchived } = require("./_shared/crm-records");
+const { customerFromBody, customerToClient, hasCustomerData, isArchived } = require("./_shared/crm-records");
 const { json, readJson } = require("./_shared/http");
 
 function matchesSearch(customer, search) {
@@ -31,6 +31,7 @@ exports.handler = async function handler(event) {
       const search = event.queryStringParameters?.search || "";
       const rows = await getRows("Customers");
       const customers = rows
+        .filter(hasCustomerData)
         .filter((row) => !isArchived(row))
         .map(customerToClient)
         .filter((customer) => matchesSearch(customer, search))
@@ -48,6 +49,9 @@ exports.handler = async function handler(event) {
     if (event.httpMethod === "PUT") {
       const body = readJson(event);
       const customerId = body.customerId || body.id;
+      if (!customerId) {
+        return json(400, { error: "Customer ID is required." });
+      }
       const existing = await findRecordById("Customers", "Customer ID", customerId);
       if (!existing) {
         return json(404, { error: "Customer not found." });
@@ -59,6 +63,9 @@ exports.handler = async function handler(event) {
 
     if (event.httpMethod === "DELETE") {
       const customerId = event.queryStringParameters?.id;
+      if (!customerId) {
+        return json(400, { error: "Customer ID is required." });
+      }
       const existing = await findRecordById("Customers", "Customer ID", customerId);
       if (!existing) {
         return json(404, { error: "Customer not found." });
@@ -73,4 +80,3 @@ exports.handler = async function handler(event) {
     return json(error.statusCode || 500, { error: error.message || "CRM customer request failed." });
   }
 };
-

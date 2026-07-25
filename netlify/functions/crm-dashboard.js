@@ -1,6 +1,6 @@
 const { requireSession } = require("./_shared/auth");
 const { getRows } = require("./_shared/google-sheets");
-const { customerToClient, dateDiffDays, isArchived, jobToClient, todayDate } = require("./_shared/crm-records");
+const { customerToClient, dateDiffDays, hasCustomerData, hasJobData, isArchived, jobToClient, todayDate } = require("./_shared/crm-records");
 const { json } = require("./_shared/http");
 
 function latestDueByCustomer(jobs) {
@@ -25,8 +25,8 @@ exports.handler = async function handler(event) {
 
   try {
     const [customerRows, jobRows] = await Promise.all([getRows("Customers"), getRows("Jobs")]);
-    const customers = customerRows.filter((row) => !isArchived(row)).map(customerToClient);
-    const jobs = jobRows.filter((row) => !isArchived(row)).map(jobToClient);
+    const customers = customerRows.filter(hasCustomerData).filter((row) => !isArchived(row)).map(customerToClient);
+    const jobs = jobRows.filter(hasJobData).filter((row) => !isArchived(row)).map(jobToClient);
     const customerById = new Map(customers.map((customer) => [customer.id, customer]));
     const today = todayDate();
 
@@ -72,4 +72,3 @@ exports.handler = async function handler(event) {
     return json(error.statusCode || 500, { error: error.message || "CRM dashboard request failed." });
   }
 };
-

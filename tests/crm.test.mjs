@@ -53,6 +53,8 @@ const customer = records.customerFromBody({
 assert.equal(customer["First Name"], "Joshua");
 assert.equal(customer.Phone, "(732) 626-0685");
 assert.equal(records.customerToClient(customer).name, "Joshua");
+assert.equal(records.hasCustomerData({}), false, "blank customer sheet rows should be ignored");
+assert.equal(records.hasCustomerData(customer), true, "real customer sheet rows should be included");
 
 const job = records.jobFromBody({
   customerId: customer["Customer ID"],
@@ -60,7 +62,15 @@ const job = records.jobFromBody({
   nextServiceDate: "2026-08-24",
 });
 assert.equal(records.jobToClient(job).customerId, customer["Customer ID"]);
+assert.equal(records.hasJobData({}), false, "blank job sheet rows should be ignored");
+assert.equal(records.hasJobData(job), true, "real job sheet rows should be included");
 assert.equal(records.dateDiffDays("2026-08-24", "2026-07-24"), 31);
 
-console.log("CRM tests passed");
+const missingCustomerIdDelete = await customers.handler({
+  httpMethod: "DELETE",
+  headers: { cookie: `mcmv_crm_session=${encodeURIComponent(sessionCookie)}` },
+  queryStringParameters: {},
+});
+assert.equal(missingCustomerIdDelete.statusCode, 400, "customer archive without an ID should fail clearly");
 
+console.log("CRM tests passed");
