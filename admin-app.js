@@ -1,0 +1,533 @@
+const app = document.querySelector("#crm-app");
+
+const state = {
+  customers: [],
+  selectedCustomer: null,
+  dashboard: null,
+  jobs: [],
+};
+
+const serviceOptions = [
+  "Dryer Vent Cleaning",
+  "Exterior Dryer Vent Cleaning",
+  "Bird Nest Removal",
+  "Dryer Vent Inspection",
+  "Gutter Cleaning",
+  "Gutter Guard Installation",
+  "House Washing",
+  "Driveway Cleaning",
+  "Sidewalk Cleaning",
+  "Patio Cleaning",
+  "Pressure Washing",
+  "Other",
+];
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    ...options,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || "CRM request failed.");
+  }
+  return data;
+}
+
+function showLogin(message = "") {
+  app.innerHTML = `
+    <section class="crm-login">
+      <form class="crm-login-card" id="login-form">
+        <h1>Mister Clean My Vent CRM</h1>
+        <p>Private customer and service dashboard.</p>
+        <div class="crm-field">
+          <label for="login-email">Email</label>
+          <input id="login-email" name="email" type="email" autocomplete="username" required>
+        </div>
+        <div class="crm-field">
+          <label for="login-password">Password</label>
+          <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+        </div>
+        <button class="crm-btn" type="submit">Log In</button>
+        <p class="crm-status ${message ? "error" : ""}" id="login-status">${escapeHtml(message)}</p>
+      </form>
+    </section>
+  `;
+
+  document.querySelector("#login-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const status = document.querySelector("#login-status");
+    const submit = event.currentTarget.querySelector("button");
+    submit.disabled = true;
+    status.textContent = "Checking login...";
+    status.classList.remove("error");
+    try {
+      await api("/api/crm/login", {
+        method: "POST",
+        body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget))),
+      });
+      await showDashboard();
+    } catch (error) {
+      status.textContent = error.message;
+      status.classList.add("error");
+    } finally {
+      submit.disabled = false;
+    }
+  });
+}
+
+function shell() {
+  app.innerHTML = `
+    <section class="crm-shell">
+      <header class="crm-header">
+        <div class="crm-brand">
+          <img src="/assets/mister-clean-my-vent-logo.png" alt="Mister Clean My Vent">
+          <div>
+            <strong>Mister Clean My Vent CRM</strong>
+            <span id="crm-user">Private dashboard</span>
+          </div>
+        </div>
+        <button class="crm-btn secondary" id="logout-button" type="button">Log Out</button>
+      </header>
+      <nav class="crm-bottom-nav" aria-label="CRM navigation">
+        <button type="button" class="active" data-screen="dashboard">Dashboard</button>
+        <button type="button" data-screen="customers">Customers</button>
+        <button type="button" data-screen="due">Due Soon</button>
+        <button type="button" data-screen="profile">Profile</button>
+      </nav>
+      <div class="crm-content">
+        <section id="screen-dashboard" class="crm-screen active"></section>
+        <section id="screen-customers" class="crm-screen"></section>
+        <section id="screen-due" class="crm-screen"></section>
+        <section id="screen-profile" class="crm-screen"></section>
+      </div>
+      <div class="crm-modal" id="customer-modal" aria-hidden="true"></div>
+      <div class="crm-modal" id="job-modal" aria-hidden="true"></div>
+    </section>
+  `;
+
+  document.querySelector("#logout-button").addEventListener("click", async () => {
+    await api("/api/crm/logout", { method: "POST" }).catch(() => null);
+    showLogin();
+  });
+
+  document.querySelectorAll(".crm-bottom-nav button").forEach((button) => {
+    button.addEventListener("click", () => {
+      document.querySelectorAll(".crm-bottom-nav button").forEach((item) => item.classList.remove("active"));
+      button.classList.add("active");
+      document.querySelectorAll(".crm-screen").forEach((screen) => screen.classList.remove("active"));
+      document.querySelector(`#screen-${button.dataset.screen}`).classList.add("active");
+    });
+  });
+}
+
+function setModalLock() {
+  const hasOpenModal = Boolean(document.querySelector(".crm-modal.open"));
+  document.body.classList.toggle("crm-modal-lock", hasOpenModal);
+}
+
+function focusFirstEditableField(form) {
+  const firstInput = form.querySelector("input:not([type='hidden']):not([disabled]), select:not([disabled]), textarea:not([disabled])");
+  if (firstInput && window.matchMedia("(min-width: 821px)").matches) {
+    window.setTimeout(() => firstInput.focus(), 80);
+  }
+}
+
+function renderDashboard() {
+  const dashboard = state.dashboard;
+  document.querySelector("#screen-dashboard").innerHTML = `
+    <div class="crm-page-title">
+      <h1>Today</h1>
+      <p>${escapeHtml(dashboard.today)} service dashboard.</p>
+      <div class="crm-actions">
+        <button class="crm-btn" type="button" id="add-customer-button">Add Customer</button>
+        <button class="crm-btn secondary" type="button" id="refresh-button">Refresh</button>
+      </div>
+    </div>
+    <div class="crm-grid">
+      <section class="crm-panel crm-col-4">
+        <h2>Snapshot</h2>
+        <div class="crm-stats">
+          <div class="crm-stat"><strong>${dashboard.stats.todayJobs}</strong><span>Today</span></div>
+          <div class="crm-stat"><strong>${dashboard.stats.overdue}</strong><span>Overdue</span></div>
+          <div class="crm-stat"><strong>${dashboard.stats.dueSoon30}</strong><span>Due 30 Days</span></div>
+          <div class="crm-stat"><strong>${dashboard.stats.customers}</strong><span>Customers</span></div>
+        </div>
+      </section>
+      <section class="crm-panel crm-col-8">
+        <h2>Today's Jobs</h2>
+        <div class="crm-list">${renderJobCards(dashboard.todayJobs, true)}</div>
+      </section>
+      <section class="crm-panel crm-col-12">
+        <h2>Unpaid or Partially Paid</h2>
+        <div class="crm-list">${renderJobCards(dashboard.unpaidJobs, true)}</div>
+      </section>
+    </div>
+  `;
+  document.querySelector("#add-customer-button").addEventListener("click", () => openCustomerModal());
+  document.querySelector("#refresh-button").addEventListener("click", showDashboard);
+}
+
+function renderCustomers() {
+  document.querySelector("#screen-customers").innerHTML = `
+    <div class="crm-page-title">
+      <h1>Customers</h1>
+      <p>Search, call, navigate, add notes, and open service history.</p>
+      <div class="crm-actions">
+        <input id="customer-search" type="search" placeholder="Search customers..." aria-label="Search customers">
+        <button class="crm-btn" type="button" id="customer-add">Add Customer</button>
+      </div>
+    </div>
+    <div class="crm-list" id="customer-list">${renderCustomerCards(state.customers)}</div>
+  `;
+  document.querySelector("#customer-add").addEventListener("click", () => openCustomerModal());
+  document.querySelector("#customer-search").addEventListener("input", (event) => {
+    const search = event.target.value.toLowerCase();
+    const filtered = state.customers.filter((customer) => [
+      customer.name,
+      customer.phone,
+      customer.email,
+      customer.streetAddress,
+      customer.city,
+      customer.leadSource,
+      customer.neighborhood,
+      customer.notes,
+    ].join(" ").toLowerCase().includes(search));
+    document.querySelector("#customer-list").innerHTML = renderCustomerCards(filtered);
+    bindCustomerButtons();
+  });
+  bindCustomerButtons();
+}
+
+function renderDue() {
+  const dashboard = state.dashboard;
+  document.querySelector("#screen-due").innerHTML = `
+    <div class="crm-page-title">
+      <h1>Due Soon</h1>
+      <p>Follow-ups based on each customer's next-service date.</p>
+    </div>
+    <div class="crm-grid">
+      <section class="crm-panel crm-col-12"><h2>Overdue</h2><div class="crm-list">${renderJobCards(dashboard.overdue, true)}</div></section>
+      <section class="crm-panel crm-col-4"><h2>0-30 Days</h2><div class="crm-list">${renderJobCards(dashboard.dueSoon30, true)}</div></section>
+      <section class="crm-panel crm-col-4"><h2>31-60 Days</h2><div class="crm-list">${renderJobCards(dashboard.dueSoon60, true)}</div></section>
+      <section class="crm-panel crm-col-4"><h2>61-90 Days</h2><div class="crm-list">${renderJobCards(dashboard.dueSoon90, true)}</div></section>
+    </div>
+  `;
+}
+
+function renderProfile() {
+  const customer = state.selectedCustomer;
+  const screen = document.querySelector("#screen-profile");
+  if (!customer) {
+    screen.innerHTML = `
+      <div class="crm-page-title">
+        <h1>Customer Profile</h1>
+        <p>Select a customer to view service history.</p>
+      </div>
+      <div class="crm-empty">No customer selected yet.</div>
+    `;
+    return;
+  }
+
+  screen.innerHTML = `
+    <div class="crm-page-title">
+      <h1>${escapeHtml(customer.name || "Customer")}</h1>
+      <p>${escapeHtml([customer.streetAddress, customer.city, customer.state, customer.zipCode].filter(Boolean).join(", "))}</p>
+      <div class="crm-actions">
+        ${customer.phone ? `<a class="crm-btn" href="tel:${escapeHtml(customer.phone.replace(/[^0-9+]/g, ""))}">Call</a>` : ""}
+        ${customer.streetAddress ? `<a class="crm-btn secondary" target="_blank" rel="noopener" href="${mapsUrl(customer)}">Directions</a>` : ""}
+        <button class="crm-btn secondary" type="button" id="edit-selected-customer">Edit</button>
+        <button class="crm-btn" type="button" id="add-job-button">Add Service</button>
+      </div>
+    </div>
+    <div class="crm-grid">
+      <section class="crm-panel crm-col-5">
+        <h2>Customer Details</h2>
+        <p><strong>Phone:</strong> ${escapeHtml(customer.phone || "Not added")}</p>
+        <p><strong>Email:</strong> ${escapeHtml(customer.email || "Not added")}</p>
+        <p><strong>Lead Source:</strong> ${escapeHtml(customer.leadSource || "Not added")}</p>
+        <p><strong>Community:</strong> ${escapeHtml(customer.neighborhood || "Not added")}</p>
+        <p><strong>Notes:</strong> ${escapeHtml(customer.notes || "No notes")}</p>
+      </section>
+      <section class="crm-panel crm-col-7">
+        <h2>Service History</h2>
+        <div class="crm-list">${renderJobCards(state.jobs, false)}</div>
+      </section>
+    </div>
+  `;
+
+  document.querySelector("#edit-selected-customer").addEventListener("click", () => openCustomerModal(customer));
+  document.querySelector("#add-job-button").addEventListener("click", () => openJobModal(customer));
+}
+
+function renderCustomerCards(customers) {
+  if (!customers.length) {
+    return `<div class="crm-empty">No customers found.</div>`;
+  }
+
+  return customers.map((customer) => `
+    <article class="crm-card">
+      <h3>${escapeHtml(customer.name || "Unnamed Customer")}</h3>
+      <p>${escapeHtml([customer.streetAddress, customer.city, customer.state, customer.zipCode].filter(Boolean).join(", "))}</p>
+      <p>${escapeHtml(customer.phone || "No phone")} ${customer.leadSource ? `<span class="crm-badge">${escapeHtml(customer.leadSource)}</span>` : ""}</p>
+      <div class="crm-actions">
+        ${customer.phone ? `<a class="crm-btn secondary" href="tel:${escapeHtml(customer.phone.replace(/[^0-9+]/g, ""))}">Call</a>` : ""}
+        ${customer.streetAddress ? `<a class="crm-btn secondary" target="_blank" rel="noopener" href="${mapsUrl(customer)}">Directions</a>` : ""}
+        <button class="crm-btn" type="button" data-view-customer="${escapeHtml(customer.id)}">View</button>
+        <button class="crm-btn warning" type="button" data-edit-customer="${escapeHtml(customer.id)}">Edit</button>
+        <button class="crm-btn danger" type="button" data-archive-customer="${escapeHtml(customer.id)}">Archive</button>
+      </div>
+    </article>
+  `).join("");
+}
+
+function renderJobCards(jobs, showCustomer) {
+  if (!jobs.length) {
+    return `<div class="crm-empty">Nothing here yet.</div>`;
+  }
+
+  return jobs.map((job) => {
+    const customerName = showCustomer && job.customer ? `<p><strong>${escapeHtml(job.customer.name)}</strong></p>` : "";
+    const due = job.daysUntilDue === undefined ? "" : `<span class="crm-badge">${job.daysUntilDue < 0 ? `${Math.abs(job.daysUntilDue)} days overdue` : `Due in ${job.daysUntilDue} days`}</span>`;
+    return `
+      <article class="crm-card">
+        <h3>${escapeHtml(job.serviceType || "Service")}</h3>
+        ${customerName}
+        <p>${escapeHtml([job.appointmentDate, job.appointmentTime].filter(Boolean).join(" at ") || "No appointment date")}</p>
+        <p>Status: ${escapeHtml(job.jobStatus || "Not set")} | Payment: ${escapeHtml(job.paymentStatus || "Not set")}</p>
+        <p>Next service: ${escapeHtml(job.nextServiceDate || "Not set")} ${due}</p>
+        ${job.technicianNotes ? `<p>${escapeHtml(job.technicianNotes)}</p>` : ""}
+      </article>
+    `;
+  }).join("");
+}
+
+function bindCustomerButtons() {
+  document.querySelectorAll("[data-view-customer]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const customer = state.customers.find((item) => item.id === button.dataset.viewCustomer);
+      state.selectedCustomer = customer;
+      const jobData = await api(`/api/crm/jobs?customerId=${encodeURIComponent(customer.id)}`);
+      state.jobs = jobData.jobs;
+      document.querySelector('[data-screen="profile"]').click();
+      renderProfile();
+    });
+  });
+
+  document.querySelectorAll("[data-edit-customer]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const customer = state.customers.find((item) => item.id === button.dataset.editCustomer);
+      openCustomerModal(customer);
+    });
+  });
+
+  document.querySelectorAll("[data-archive-customer]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (!confirm("Archive this customer?")) {
+        return;
+      }
+      await api(`/api/crm/customers?id=${encodeURIComponent(button.dataset.archiveCustomer)}`, { method: "DELETE" });
+      await loadData();
+    });
+  });
+}
+
+function mapsUrl(customer) {
+  const query = [customer.streetAddress, customer.city, customer.state, customer.zipCode].filter(Boolean).join(", ");
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
+function openCustomerModal(customer = null) {
+  const modal = document.querySelector("#customer-modal");
+  modal.classList.add("open");
+  modal.setAttribute("aria-hidden", "false");
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.innerHTML = `
+    <form class="crm-modal-card" id="customer-form">
+      <h2>${customer ? "Edit Customer" : "Add Customer"}</h2>
+      <input type="hidden" name="customerId" value="${escapeHtml(customer?.id || "")}">
+      <div class="crm-form-grid">
+        ${field("First Name", "firstName", customer?.firstName || "", true)}
+        ${field("Last Name", "lastName", customer?.lastName || "")}
+        ${field("Phone", "phone", customer?.phone || "", false, "tel")}
+        ${field("Email", "email", customer?.email || "", false, "email")}
+        ${field("Street Address", "streetAddress", customer?.streetAddress || "", false, "text", "full")}
+        ${field("City", "city", customer?.city || "")}
+        ${field("State", "state", customer?.state || "NJ")}
+        ${field("ZIP Code", "zipCode", customer?.zipCode || "")}
+        ${selectField("Lead Source", "leadSource", customer?.leadSource || "", ["Google", "Referral", "Door Hanger", "Facebook", "Repeat Customer", "Branchburg", "Other"])}
+        ${field("Neighborhood or Community", "neighborhood", customer?.neighborhood || "")}
+        ${selectField("Preferred Contact", "preferredContactMethod", customer?.preferredContactMethod || "", ["Call", "Text", "Email"])}
+        ${selectField("Customer Status", "customerStatus", customer?.customerStatus || "Active", ["Active", "Lead", "Scheduled", "Recently Serviced", "Archived"])}
+        ${textareaField("Notes", "notes", customer?.notes || "")}
+      </div>
+      <div class="crm-actions">
+        <button class="crm-btn" type="submit">${customer ? "Save Customer" : "Add Customer"}</button>
+        <button class="crm-btn secondary" type="button" data-close-modal>Cancel</button>
+      </div>
+      <p class="crm-status" id="customer-status"></p>
+    </form>
+  `;
+
+  setModalLock();
+  const form = modal.querySelector("#customer-form");
+  focusFirstEditableField(form);
+  modal.querySelector("[data-close-modal]").addEventListener("click", () => closeModal(modal));
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const status = modal.querySelector("#customer-status");
+    const formData = Object.fromEntries(new FormData(event.currentTarget));
+    const method = customer ? "PUT" : "POST";
+    status.textContent = "Saving...";
+    try {
+      await api("/api/crm/customers", { method, body: JSON.stringify(formData) });
+      closeModal(modal);
+      await loadData();
+    } catch (error) {
+      status.textContent = error.message;
+      status.classList.add("error");
+    }
+  });
+}
+
+function openJobModal(customer) {
+  const modal = document.querySelector("#job-modal");
+  modal.classList.add("open");
+  modal.setAttribute("aria-hidden", "false");
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.innerHTML = `
+    <form class="crm-modal-card" id="job-form">
+      <h2>Add Service for ${escapeHtml(customer.name)}</h2>
+      <input type="hidden" name="customerId" value="${escapeHtml(customer.id)}">
+      <div class="crm-form-grid">
+        ${field("Appointment Date", "appointmentDate", "", false, "date")}
+        ${field("Appointment Time", "appointmentTime", "", false, "time")}
+        ${selectField("Job Status", "jobStatus", "Scheduled", ["Lead", "Estimate Scheduled", "Estimate Sent", "Scheduled", "In Progress", "Completed", "Canceled"])}
+        ${selectField("Service Type", "serviceType", "Dryer Vent Cleaning", serviceOptions)}
+        ${field("Quoted Price", "quotedPrice", "")}
+        ${field("Final Price", "finalPrice", "")}
+        ${selectField("Payment Status", "paymentStatus", "Not Invoiced", ["Not Invoiced", "Unpaid", "Partially Paid", "Paid"])}
+        ${field("Payment Method", "paymentMethod", "")}
+        ${field("Date Completed", "dateCompleted", "", false, "date")}
+        ${field("Next Service Date", "nextServiceDate", "", false, "date")}
+        ${textareaField("Service Description", "serviceDescription", "")}
+        ${textareaField("Technician Notes", "technicianNotes", "")}
+      </div>
+      <div class="crm-actions">
+        <button class="crm-btn" type="submit">Save Service</button>
+        <button class="crm-btn secondary" type="button" data-close-modal>Cancel</button>
+      </div>
+      <p class="crm-status" id="job-status"></p>
+    </form>
+  `;
+
+  setModalLock();
+  const form = modal.querySelector("#job-form");
+  focusFirstEditableField(form);
+  modal.querySelector("[data-close-modal]").addEventListener("click", () => closeModal(modal));
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const status = modal.querySelector("#job-status");
+    status.textContent = "Saving service...";
+    try {
+      await api("/api/crm/jobs", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget))) });
+      closeModal(modal);
+      const jobData = await api(`/api/crm/jobs?customerId=${encodeURIComponent(customer.id)}`);
+      state.jobs = jobData.jobs;
+      await loadData(false);
+      renderProfile();
+    } catch (error) {
+      status.textContent = error.message;
+      status.classList.add("error");
+    }
+  });
+}
+
+function closeModal(modal) {
+  modal.classList.remove("open");
+  modal.setAttribute("aria-hidden", "true");
+  modal.removeAttribute("role");
+  modal.removeAttribute("aria-modal");
+  modal.innerHTML = "";
+  setModalLock();
+}
+
+function field(label, name, value, required = false, type = "text", className = "") {
+  const inputAttributes = {
+    firstName: 'autocomplete="given-name" autocapitalize="words"',
+    lastName: 'autocomplete="family-name" autocapitalize="words"',
+    phone: 'autocomplete="tel" inputmode="tel"',
+    email: 'autocomplete="email" inputmode="email" autocapitalize="none"',
+    streetAddress: 'autocomplete="street-address" autocapitalize="words"',
+    city: 'autocomplete="address-level2" autocapitalize="words"',
+    state: 'autocomplete="address-level1" autocapitalize="characters"',
+    zipCode: 'autocomplete="postal-code" inputmode="numeric"',
+    quotedPrice: 'inputmode="decimal"',
+    finalPrice: 'inputmode="decimal"',
+  };
+
+  return `<div class="crm-field ${className}">
+    <label for="${name}">${label}</label>
+    <input id="${name}" name="${name}" type="${type}" value="${escapeHtml(value)}" ${inputAttributes[name] || ""} ${required ? "required" : ""}>
+  </div>`;
+}
+
+function textareaField(label, name, value) {
+  return `<div class="crm-field full">
+    <label for="${name}">${label}</label>
+    <textarea id="${name}" name="${name}" autocapitalize="sentences">${escapeHtml(value)}</textarea>
+  </div>`;
+}
+
+function selectField(label, name, value, options) {
+  return `<div class="crm-field">
+    <label for="${name}">${label}</label>
+    <select id="${name}" name="${name}">
+      <option value="">Select...</option>
+      ${options.map((option) => `<option value="${escapeHtml(option)}" ${option === value ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
+    </select>
+  </div>`;
+}
+
+async function loadData(renderAll = true) {
+  const [dashboardData, customerData] = await Promise.all([
+    api("/api/crm/dashboard"),
+    api("/api/crm/customers"),
+  ]);
+  state.dashboard = dashboardData;
+  state.customers = customerData.customers;
+  if (renderAll) {
+    renderDashboard();
+    renderCustomers();
+    renderDue();
+    renderProfile();
+  }
+}
+
+async function showDashboard() {
+  shell();
+  try {
+    const session = await api("/api/crm/session");
+    document.querySelector("#crm-user").textContent = session.email;
+    await loadData();
+  } catch (error) {
+    showLogin(error.message);
+  }
+}
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/crm-assets/service-worker.js").catch(() => null);
+}
+
+showDashboard();
