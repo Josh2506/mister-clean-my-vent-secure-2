@@ -66,6 +66,48 @@ const shiftedCustomer = googleSheets.valuesToRecords(shiftedCustomerRows, "Custo
 assert.equal(shiftedCustomer["First Name"], "Jane", "customer rows should follow Google Sheet headers");
 assert.equal(shiftedCustomer.Phone, "7326260685", "customer phone should follow Google Sheet headers");
 
+const farShiftedCustomerRows = [
+  ["Customer ID", "First Name", "Last Name", "Phone", "Email", "Street Address", "City", "State", "ZIP Code"],
+  [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "cus_far_shifted",
+    "Maria",
+    "Lopez",
+    "(732) 626-0685",
+    "maria@example.com",
+    "45 Oak St",
+    "Somerville",
+    "NJ",
+    "08876",
+    "Google",
+  ],
+];
+const farShiftedCustomer = googleSheets.valuesToRecords(farShiftedCustomerRows, "Customers")[0];
+assert.equal(farShiftedCustomer["Customer ID"], "cus_far_shifted", "customer IDs shifted into column P should still be read");
+assert.equal(farShiftedCustomer["First Name"], "Maria", "shifted first names should map back to the normal customer schema");
+assert.equal(farShiftedCustomer.Phone, "(732) 626-0685", "shifted phone numbers should map back to the normal customer schema");
+assert.equal(farShiftedCustomer.City, "Somerville", "shifted cities should map back to the normal customer schema");
+assert.equal(googleSheets.nextAppendRow([["Customer ID"], []]), 2, "blank rows should not force appends down the sheet");
+assert.equal(
+  googleSheets.nextAppendRow([["Customer ID"], [], farShiftedCustomerRows[1]]),
+  4,
+  "new records should append below shifted data instead of overwriting it"
+);
+
 const alternateCustomerRows = [
   ["ID", "Name", "Phone Number", "Service Address", "Notes", "Archived"],
   ["cus_alt", "Jane Customer", "7326260685", "123 Main St", "Needs annual dryer vent cleaning", "FALSE"],

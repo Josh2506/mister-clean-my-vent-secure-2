@@ -141,16 +141,53 @@ function buildHeaderIndex(actualHeaders, expectedHeaders) {
   });
 }
 
+function rowHasAnyValue(row = []) {
+  return row.some((cell) => String(cell || "").trim());
+}
+
+function getRecordIdPrefix(tabName) {
+  const prefixes = {
+    Customers: "cus_",
+    Jobs: "job_",
+    Reminders: "rem_",
+    Leads: "lead_",
+    Services: "svc_",
+  };
+  return prefixes[tabName] || "";
+}
+
+function findShiftedRecordStart(row = [], tabName) {
+  const prefix = getRecordIdPrefix(tabName);
+  if (!prefix) {
+    return -1;
+  }
+  return row.findIndex((cell) => String(cell || "").trim().startsWith(prefix));
+}
+
+function recordFromRow(row = [], headers = [], rowNumber, startIndex = 0) {
+  const record = { rowNumber };
+  headers.forEach((header, headerIndex) => {
+    record[header] = row[startIndex + headerIndex] || "";
+  });
+  return record;
+}
+
 function valuesToRecords(values = [], tabName) {
   const headers = getTabHeaders(tabName);
   const actualHeaders = values[0] || [];
   const headerIndexes = buildHeaderIndex(actualHeaders, headers) || headers.map((_, index) => index);
 
   return values.slice(1).map((row, index) => {
-    const record = { rowNumber: index + 2 };
+    let record = { rowNumber: index + 2 };
     headers.forEach((header, headerIndex) => {
       record[header] = row[headerIndexes[headerIndex]] || "";
     });
+
+    const shiftedStart = findShiftedRecordStart(row, tabName);
+    if (!record[headers[0]] && shiftedStart > 0) {
+      record = recordFromRow(row, headers, index + 2, shiftedStart);
+    }
+
     actualHeaders.forEach((header, actualIndex) => {
       const rawHeader = String(header || "").trim();
       if (rawHeader && record[rawHeader] === undefined) {
@@ -161,9 +198,25 @@ function valuesToRecords(values = [], tabName) {
   });
 }
 
-async function getRows(tabName) {
+async function ensureHeaders(tabName) {
   const headers = getTabHeaders(tabName);
   const endColumn = columnName(headers.length - 1);
+  const encodedRange = encodeURIComponent(`${tabName}!A1:${endColumn}1`);
+  await sheetsRequest(`/values/${encodedRange}?valueInputOption=USER_ENTERED`, {
+    method: "PUT",
+    body: JSON.stringify({ values: [headers] }),
+  });
+}
+
+function nextAppendRow(values = []) {
+  const lastUsedRow = values.reduce((lastRow, row, index) => (rowHasAnyValue(row) ? index + 1 : lastRow), 1);
+  return Math.max(lastUsedRow + 1, 2);
+}
+
+async function getRows(tabName) {
+  const headers = getTabHeaders(tabName);
+  await ensureHeaders(tabName);
+  const endColumn = "AZ";
   const encodedRange = encodeURIComponent(`${tabName}!A:${endColumn}`);
   const data = await sheetsRequest(`/values/${encodedRange}`);
   return valuesToRecords(data.values || [headers], tabName);
@@ -171,10 +224,15 @@ async function getRows(tabName) {
 
 async function appendRecord(tabName, record) {
   const headers = getTabHeaders(tabName);
+  await ensureHeaders(tabName);
   const values = headers.map((header) => record[header] || "");
-  const encodedRange = encodeURIComponent(`${tabName}!A:${columnName(headers.length - 1)}`);
-  await sheetsRequest(`/values/${encodedRange}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
-    method: "POST",
+  const endColumn = columnName(headers.length - 1);
+  const tableRange = encodeURIComponent(`${tabName}!A:AZ`);
+  const data = await sheetsRequest(`/values/${tableRange}`);
+  const rowNumber = nextAppendRow(data.values || [headers]);
+  const encodedRange = encodeURIComponent(`${tabName}!A${rowNumber}:${endColumn}${rowNumber}`);
+  await sheetsRequest(`/values/${encodedRange}?valueInputOption=USER_ENTERED`, {
+    method: "PUT",
     body: JSON.stringify({ values: [values] }),
   });
   return record;
@@ -182,6 +240,7 @@ async function appendRecord(tabName, record) {
 
 async function updateRecord(tabName, rowNumber, record) {
   const headers = getTabHeaders(tabName);
+  await ensureHeaders(tabName);
   const values = headers.map((header) => record[header] || "");
   const endColumn = columnName(headers.length - 1);
   const encodedRange = encodeURIComponent(`${tabName}!A${rowNumber}:${endColumn}${rowNumber}`);
@@ -202,6 +261,7 @@ module.exports = {
   findRecordById,
   getRows,
   getTabHeaders,
+  nextAppendRow,
   updateRecord,
   valuesToRecords,
 };
