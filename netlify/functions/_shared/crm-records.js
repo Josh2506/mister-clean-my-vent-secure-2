@@ -22,7 +22,6 @@ function isArchived(record) {
 
 function hasCustomerData(record) {
   return [
-    "Customer ID",
     "First Name",
     "Last Name",
     "Phone",
@@ -37,8 +36,6 @@ function hasCustomerData(record) {
 
 function hasJobData(record) {
   return [
-    "Job ID",
-    "Customer ID",
     "Appointment Date",
     "Service Type",
     "Service Description",

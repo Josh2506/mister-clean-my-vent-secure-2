@@ -16,6 +16,10 @@
   box-sizing: border-box;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   color: var(--crm-ink);
@@ -23,11 +27,16 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+body.crm-modal-lock {
+  overflow: hidden;
+}
+
 button,
 input,
 select,
 textarea {
   font: inherit;
+  font-size: 16px;
 }
 
 .crm-app {
@@ -112,6 +121,38 @@ textarea {
   width: min(1180px, 100%);
   margin: 0 auto;
   padding: 18px 14px 32px;
+}
+
+.crm-toast {
+  position: fixed;
+  right: 14px;
+  bottom: 82px;
+  left: 14px;
+  z-index: 30;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 13px 16px;
+  border: 1px solid #b9d7aa;
+  border-radius: var(--crm-radius);
+  background: #edf7e6;
+  color: var(--crm-green);
+  font-weight: 700;
+  box-shadow: 0 12px 34px rgba(20, 61, 31, 0.16);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(10px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.crm-toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.crm-toast.error {
+  border-color: #ffd0ca;
+  background: #fff3f0;
+  color: var(--crm-danger);
 }
 
 .crm-page-title {
@@ -238,17 +279,22 @@ textarea {
 .crm-field input,
 .crm-field select,
 .crm-field textarea {
+  -webkit-appearance: none;
+  appearance: none;
   width: 100%;
   min-height: 46px;
   padding: 11px 12px;
   border: 1px solid #cbd7c2;
   border-radius: var(--crm-radius);
   background: #fff;
+  color: var(--crm-ink);
+  touch-action: manipulation;
 }
 
 .crm-field textarea {
   min-height: 92px;
   resize: vertical;
+  -webkit-overflow-scrolling: touch;
 }
 
 .crm-list {
@@ -342,6 +388,7 @@ textarea {
   place-items: end center;
   padding: 16px;
   background: rgba(0, 0, 0, 0.48);
+  overscroll-behavior: contain;
 }
 
 .crm-modal.open {
@@ -355,6 +402,7 @@ textarea {
   padding: 18px;
   border-radius: var(--crm-radius);
   background: #fffef4;
+  -webkit-overflow-scrolling: touch;
 }
 
 .crm-form-grid {
@@ -397,6 +445,38 @@ textarea {
   }
 }
 
+@media (max-width: 640px) {
+  .crm-login {
+    align-items: start;
+    padding: 16px;
+  }
+
+  .crm-login-card {
+    margin-top: 28px;
+  }
+
+  .crm-modal {
+    place-items: stretch;
+    padding: 0;
+  }
+
+  .crm-modal-card {
+    width: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+    max-height: 100vh;
+    max-height: 100dvh;
+    padding: 18px 16px calc(92px + env(safe-area-inset-bottom));
+    border-radius: 0;
+  }
+
+  .crm-field input,
+  .crm-field select,
+  .crm-field textarea {
+    min-height: 52px;
+  }
+}
+
 @media (min-width: 821px) {
   .crm-modal {
     place-items: center;
@@ -421,5 +501,12 @@ textarea {
     min-height: 48px;
     padding: 0 18px;
   }
-}
 
+  .crm-toast {
+    top: 136px;
+    right: 24px;
+    bottom: auto;
+    left: auto;
+    margin: 0;
+  }
+}

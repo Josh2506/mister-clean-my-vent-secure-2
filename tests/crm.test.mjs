@@ -54,6 +54,7 @@ assert.equal(customer["First Name"], "Joshua");
 assert.equal(customer.Phone, "(732) 626-0685");
 assert.equal(records.customerToClient(customer).name, "Joshua");
 assert.equal(records.hasCustomerData({}), false, "blank customer sheet rows should be ignored");
+assert.equal(records.hasCustomerData({ "Customer ID": "cus_blank_only" }), false, "ID-only customer rows should be ignored");
 assert.equal(records.hasCustomerData(customer), true, "real customer sheet rows should be included");
 
 const job = records.jobFromBody({
@@ -63,6 +64,7 @@ const job = records.jobFromBody({
 });
 assert.equal(records.jobToClient(job).customerId, customer["Customer ID"]);
 assert.equal(records.hasJobData({}), false, "blank job sheet rows should be ignored");
+assert.equal(records.hasJobData({ "Job ID": "job_blank_only", "Customer ID": customer["Customer ID"] }), false, "ID-only job rows should be ignored");
 assert.equal(records.hasJobData(job), true, "real job sheet rows should be included");
 assert.equal(records.dateDiffDays("2026-08-24", "2026-07-24"), 31);
 

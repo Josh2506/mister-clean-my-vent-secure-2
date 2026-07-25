@@ -43,6 +43,29 @@ async function api(path, options = {}) {
   return data;
 }
 
+function showNotice(message, type = "success") {
+  const notice = document.querySelector("#crm-toast");
+  if (!notice) {
+    return;
+  }
+  notice.textContent = message;
+  notice.classList.toggle("error", type === "error");
+  notice.classList.add("show");
+  window.clearTimeout(showNotice.timeout);
+  showNotice.timeout = window.setTimeout(() => {
+    notice.classList.remove("show");
+  }, 5200);
+}
+
+function switchScreen(screenName) {
+  document.querySelectorAll(".crm-bottom-nav button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.screen === screenName);
+  });
+  document.querySelectorAll(".crm-screen").forEach((screen) => {
+    screen.classList.toggle("active", screen.id === `screen-${screenName}`);
+  });
+}
+
 function showLogin(message = "") {
   app.innerHTML = `
     <section class="crm-login">
@@ -104,6 +127,7 @@ function shell() {
         <button type="button" data-screen="due">Due Soon</button>
         <button type="button" data-screen="profile">Profile</button>
       </nav>
+      <div class="crm-toast" id="crm-toast" role="status" aria-live="polite"></div>
       <div class="crm-content">
         <section id="screen-dashboard" class="crm-screen active"></section>
         <section id="screen-customers" class="crm-screen"></section>
@@ -122,12 +146,21 @@ function shell() {
 
   document.querySelectorAll(".crm-bottom-nav button").forEach((button) => {
     button.addEventListener("click", () => {
-      document.querySelectorAll(".crm-bottom-nav button").forEach((item) => item.classList.remove("active"));
-      button.classList.add("active");
-      document.querySelectorAll(".crm-screen").forEach((screen) => screen.classList.remove("active"));
-      document.querySelector(`#screen-${button.dataset.screen}`).classList.add("active");
+      switchScreen(button.dataset.screen);
     });
   });
+}
+
+function setModalLock() {
+  const hasOpenModal = Boolean(document.querySelector(".crm-modal.open"));
+  document.body.classList.toggle("crm-modal-lock", hasOpenModal);
+}
+
+function focusFirstEditableField(form) {
+  const firstInput = form.querySelector("input:not([type='hidden']):not([disabled]), select:not([disabled]), textarea:not([disabled])");
+  if (firstInput && window.matchMedia("(min-width: 821px)").matches) {
+    window.setTimeout(() => firstInput.focus(), 80);
+  }
 }
 
 function renderDashboard() {
@@ -303,10 +336,16 @@ function bindCustomerButtons() {
   document.querySelectorAll("[data-view-customer]").forEach((button) => {
     button.addEventListener("click", async () => {
       const customer = state.customers.find((item) => item.id === button.dataset.viewCustomer);
+      if (!customer) {
+        showNotice("That customer was not found. Refreshing the customer list now.", "error");
+        await loadData();
+        switchScreen("customers");
+        return;
+      }
       state.selectedCustomer = customer;
       const jobData = await api(`/api/crm/jobs?customerId=${encodeURIComponent(customer.id)}`);
       state.jobs = jobData.jobs;
-      document.querySelector('[data-screen="profile"]').click();
+      switchScreen("profile");
       renderProfile();
     });
   });
@@ -323,8 +362,16 @@ function bindCustomerButtons() {
       if (!confirm("Archive this customer?")) {
         return;
       }
-      await api(`/api/crm/customers?id=${encodeURIComponent(button.dataset.archiveCustomer)}`, { method: "DELETE" });
-      await loadData();
+      try {
+        await api(`/api/crm/customers?id=${encodeURIComponent(button.dataset.archiveCustomer)}`, { method: "DELETE" });
+        await loadData();
+        switchScreen("customers");
+        showNotice("Customer archived.");
+      } catch (error) {
+        await loadData();
+        switchScreen("customers");
+        showNotice(error.message || "Customer could not be archived.", "error");
+      }
     });
   });
 }
@@ -338,6 +385,8 @@ function openCustomerModal(customer = null) {
   const modal = document.querySelector("#customer-modal");
   modal.classList.add("open");
   modal.setAttribute("aria-hidden", "false");
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
   modal.innerHTML = `
     <form class="crm-modal-card" id="customer-form">
       <h2>${customer ? "Edit Customer" : "Add Customer"}</h2>
@@ -365,20 +414,31 @@ function openCustomerModal(customer = null) {
     </form>
   `;
 
+  setModalLock();
+  const form = modal.querySelector("#customer-form");
+  focusFirstEditableField(form);
   modal.querySelector("[data-close-modal]").addEventListener("click", () => closeModal(modal));
-  modal.querySelector("#customer-form").addEventListener("submit", async (event) => {
+  form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const status = modal.querySelector("#customer-status");
+    const submit = event.currentTarget.querySelector("button[type='submit']");
     const formData = Object.fromEntries(new FormData(event.currentTarget));
     const method = customer ? "PUT" : "POST";
     status.textContent = "Saving...";
+    status.classList.remove("error");
+    submit.disabled = true;
     try {
       await api("/api/crm/customers", { method, body: JSON.stringify(formData) });
       closeModal(modal);
       await loadData();
+      switchScreen("customers");
+      showNotice(customer ? "Customer updated and saved to Google Sheets." : "Customer saved to Google Sheets.");
     } catch (error) {
       status.textContent = error.message;
       status.classList.add("error");
+      showNotice(error.message || "Customer could not be saved.", "error");
+    } finally {
+      submit.disabled = false;
     }
   });
 }
@@ -387,6 +447,8 @@ function openJobModal(customer) {
   const modal = document.querySelector("#job-modal");
   modal.classList.add("open");
   modal.setAttribute("aria-hidden", "false");
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
   modal.innerHTML = `
     <form class="crm-modal-card" id="job-form">
       <h2>Add Service for ${escapeHtml(customer.name)}</h2>
@@ -413,11 +475,17 @@ function openJobModal(customer) {
     </form>
   `;
 
+  setModalLock();
+  const form = modal.querySelector("#job-form");
+  focusFirstEditableField(form);
   modal.querySelector("[data-close-modal]").addEventListener("click", () => closeModal(modal));
-  modal.querySelector("#job-form").addEventListener("submit", async (event) => {
+  form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const status = modal.querySelector("#job-status");
+    const submit = event.currentTarget.querySelector("button[type='submit']");
     status.textContent = "Saving service...";
+    status.classList.remove("error");
+    submit.disabled = true;
     try {
       await api("/api/crm/jobs", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget))) });
       closeModal(modal);
@@ -425,9 +493,14 @@ function openJobModal(customer) {
       state.jobs = jobData.jobs;
       await loadData(false);
       renderProfile();
+      switchScreen("profile");
+      showNotice("Service saved to Google Sheets.");
     } catch (error) {
       status.textContent = error.message;
       status.classList.add("error");
+      showNotice(error.message || "Service could not be saved.", "error");
+    } finally {
+      submit.disabled = false;
     }
   });
 }
@@ -435,20 +508,36 @@ function openJobModal(customer) {
 function closeModal(modal) {
   modal.classList.remove("open");
   modal.setAttribute("aria-hidden", "true");
+  modal.removeAttribute("role");
+  modal.removeAttribute("aria-modal");
   modal.innerHTML = "";
+  setModalLock();
 }
 
 function field(label, name, value, required = false, type = "text", className = "") {
+  const inputAttributes = {
+    firstName: 'autocomplete="given-name" autocapitalize="words"',
+    lastName: 'autocomplete="family-name" autocapitalize="words"',
+    phone: 'autocomplete="tel" inputmode="tel"',
+    email: 'autocomplete="email" inputmode="email" autocapitalize="none"',
+    streetAddress: 'autocomplete="street-address" autocapitalize="words"',
+    city: 'autocomplete="address-level2" autocapitalize="words"',
+    state: 'autocomplete="address-level1" autocapitalize="characters"',
+    zipCode: 'autocomplete="postal-code" inputmode="numeric"',
+    quotedPrice: 'inputmode="decimal"',
+    finalPrice: 'inputmode="decimal"',
+  };
+
   return `<div class="crm-field ${className}">
     <label for="${name}">${label}</label>
-    <input id="${name}" name="${name}" type="${type}" value="${escapeHtml(value)}" ${required ? "required" : ""}>
+    <input id="${name}" name="${name}" type="${type}" value="${escapeHtml(value)}" ${inputAttributes[name] || ""} ${required ? "required" : ""}>
   </div>`;
 }
 
 function textareaField(label, name, value) {
   return `<div class="crm-field full">
     <label for="${name}">${label}</label>
-    <textarea id="${name}" name="${name}">${escapeHtml(value)}</textarea>
+    <textarea id="${name}" name="${name}" autocapitalize="sentences">${escapeHtml(value)}</textarea>
   </div>`;
 }
 
@@ -493,4 +582,3 @@ if ("serviceWorker" in navigator) {
 }
 
 showDashboard();
-
