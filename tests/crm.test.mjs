@@ -66,6 +66,19 @@ const shiftedCustomer = googleSheets.valuesToRecords(shiftedCustomerRows, "Custo
 assert.equal(shiftedCustomer["First Name"], "Jane", "customer rows should follow Google Sheet headers");
 assert.equal(shiftedCustomer.Phone, "7326260685", "customer phone should follow Google Sheet headers");
 
+const alternateCustomerRows = [
+  ["ID", "Name", "Phone Number", "Service Address", "Notes", "Archived"],
+  ["cus_alt", "Jane Customer", "7326260685", "123 Main St", "Needs annual dryer vent cleaning", "FALSE"],
+];
+const alternateCustomer = googleSheets.valuesToRecords(alternateCustomerRows, "Customers")[0];
+const alternateClient = records.customerToClient(alternateCustomer);
+assert.equal(records.hasCustomerData(alternateCustomer), true, "customers with alternate sheet headers should be included");
+assert.equal(alternateClient.id, "cus_alt", "alternate customer ID header should be read");
+assert.equal(alternateClient.name, "Jane Customer", "alternate customer name header should be read");
+assert.equal(alternateClient.phone, "7326260685", "alternate phone header should be read");
+assert.equal(alternateClient.streetAddress, "123 Main St", "alternate address header should be read");
+assert.equal(alternateClient.notes, "Needs annual dryer vent cleaning", "alternate notes header should be read");
+
 const job = records.jobFromBody({
   customerId: customer["Customer ID"],
   serviceType: "Dryer Vent Cleaning",

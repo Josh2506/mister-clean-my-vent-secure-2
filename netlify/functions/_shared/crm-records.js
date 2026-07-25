@@ -12,12 +12,54 @@ function clean(value) {
   return String(value || "").trim();
 }
 
+const recordFieldAliases = {
+  "Customer ID": ["Customer ID", "Customer Id", "ID", "Id"],
+  "First Name": ["First Name", "First", "Name", "Full Name", "Customer Name"],
+  "Last Name": ["Last Name", "Last"],
+  Phone: ["Phone", "Phone Number", "Customer Phone", "Mobile"],
+  Email: ["Email", "Email Address", "Customer Email"],
+  "Street Address": ["Street Address", "Address", "Service Address", "Customer Address"],
+  City: ["City", "Town"],
+  State: ["State"],
+  "ZIP Code": ["ZIP Code", "Zip", "Zip Code", "Postal Code"],
+  "Lead Source": ["Lead Source", "Source"],
+  "Neighborhood or Community": ["Neighborhood or Community", "Neighborhood", "Community"],
+  "Preferred Contact Method": ["Preferred Contact Method", "Preferred Contact", "Contact Method"],
+  "Date Added": ["Date Added", "Created Date"],
+  "Customer Status": ["Customer Status", "Status"],
+  "General Notes": ["General Notes", "Notes", "Message", "Optional Message"],
+  "Job ID": ["Job ID", "Job Id", "ID", "Id"],
+  "Appointment Date": ["Appointment Date", "Date", "Service Date", "Job Date"],
+  "Appointment Time": ["Appointment Time", "Time", "Service Time", "Job Time"],
+  "Job Status": ["Job Status", "Status"],
+  "Service Type": ["Service Type", "Service", "Service Name"],
+  "Service Description": ["Service Description", "Description"],
+  "Quoted Price": ["Quoted Price", "Estimate", "Estimated Price"],
+  "Final Price": ["Final Price", "Price", "Job Price"],
+  "Payment Status": ["Payment Status", "Paid Status"],
+  "Payment Method": ["Payment Method"],
+  "Technician Notes": ["Technician Notes", "Notes", "Job Notes"],
+  "Before Photo Folder URL": ["Before Photo Folder URL", "Before Photos"],
+  "After Photo Folder URL": ["After Photo Folder URL", "After Photos"],
+  "Date Completed": ["Date Completed", "Completed Date"],
+  "Next Service Date": ["Next Service Date", "Next Recommended Service Date", "Reminder Date"],
+  "Created At": ["Created At"],
+  "Updated At": ["Updated At"],
+  Archived: ["Archived", "Archive"],
+};
+
+function readRecordValue(record = {}, fieldName) {
+  const names = recordFieldAliases[fieldName] || [fieldName];
+  const matchedName = names.find((name) => clean(record[name]));
+  return matchedName ? clean(record[matchedName]) : clean(record[fieldName]);
+}
+
 function id(prefix) {
   return `${prefix}_${Date.now().toString(36)}_${crypto.randomBytes(4).toString("hex")}`;
 }
 
 function isArchived(record) {
-  return String(record.Archived || "").toUpperCase() === "TRUE";
+  return readRecordValue(record, "Archived").toUpperCase() === "TRUE";
 }
 
 function hasCustomerData(record) {
@@ -30,8 +72,10 @@ function hasCustomerData(record) {
     "City",
     "ZIP Code",
     "Lead Source",
+    "Neighborhood or Community",
+    "Preferred Contact Method",
     "General Notes",
-  ].some((field) => clean(record[field]));
+  ].some((field) => readRecordValue(record, field));
 }
 
 function hasJobData(record) {
@@ -43,7 +87,7 @@ function hasJobData(record) {
     "Final Price",
     "Technician Notes",
     "Next Service Date",
-  ].some((field) => clean(record[field]));
+  ].some((field) => readRecordValue(record, field));
 }
 
 function normalizePhone(value) {
@@ -88,25 +132,28 @@ function customerFromBody(body, existing = {}) {
 }
 
 function customerToClient(record) {
+  const firstName = readRecordValue(record, "First Name");
+  const lastName = readRecordValue(record, "Last Name");
+
   return {
-    id: record["Customer ID"],
-    firstName: record["First Name"],
-    lastName: record["Last Name"],
-    name: `${record["First Name"] || ""} ${record["Last Name"] || ""}`.trim(),
-    phone: record.Phone,
-    email: record.Email,
-    streetAddress: record["Street Address"],
-    city: record.City,
-    state: record.State,
-    zipCode: record["ZIP Code"],
-    leadSource: record["Lead Source"],
-    neighborhood: record["Neighborhood or Community"],
-    preferredContactMethod: record["Preferred Contact Method"],
-    dateAdded: record["Date Added"],
-    customerStatus: record["Customer Status"],
-    notes: record["General Notes"],
-    createdAt: record["Created At"],
-    updatedAt: record["Updated At"],
+    id: readRecordValue(record, "Customer ID"),
+    firstName,
+    lastName,
+    name: `${firstName || ""} ${lastName || ""}`.trim(),
+    phone: readRecordValue(record, "Phone"),
+    email: readRecordValue(record, "Email"),
+    streetAddress: readRecordValue(record, "Street Address"),
+    city: readRecordValue(record, "City"),
+    state: readRecordValue(record, "State"),
+    zipCode: readRecordValue(record, "ZIP Code"),
+    leadSource: readRecordValue(record, "Lead Source"),
+    neighborhood: readRecordValue(record, "Neighborhood or Community"),
+    preferredContactMethod: readRecordValue(record, "Preferred Contact Method"),
+    dateAdded: readRecordValue(record, "Date Added"),
+    customerStatus: readRecordValue(record, "Customer Status"),
+    notes: readRecordValue(record, "General Notes"),
+    createdAt: readRecordValue(record, "Created At"),
+    updatedAt: readRecordValue(record, "Updated At"),
   };
 }
 
@@ -144,24 +191,24 @@ function jobFromBody(body, existing = {}) {
 
 function jobToClient(record) {
   return {
-    id: record["Job ID"],
-    customerId: record["Customer ID"],
-    appointmentDate: record["Appointment Date"],
-    appointmentTime: record["Appointment Time"],
-    jobStatus: record["Job Status"],
-    serviceType: record["Service Type"],
-    serviceDescription: record["Service Description"],
-    quotedPrice: record["Quoted Price"],
-    finalPrice: record["Final Price"],
-    paymentStatus: record["Payment Status"],
-    paymentMethod: record["Payment Method"],
-    technicianNotes: record["Technician Notes"],
-    beforePhotoFolderUrl: record["Before Photo Folder URL"],
-    afterPhotoFolderUrl: record["After Photo Folder URL"],
-    dateCompleted: record["Date Completed"],
-    nextServiceDate: record["Next Service Date"],
-    createdAt: record["Created At"],
-    updatedAt: record["Updated At"],
+    id: readRecordValue(record, "Job ID"),
+    customerId: readRecordValue(record, "Customer ID"),
+    appointmentDate: readRecordValue(record, "Appointment Date"),
+    appointmentTime: readRecordValue(record, "Appointment Time"),
+    jobStatus: readRecordValue(record, "Job Status"),
+    serviceType: readRecordValue(record, "Service Type"),
+    serviceDescription: readRecordValue(record, "Service Description"),
+    quotedPrice: readRecordValue(record, "Quoted Price"),
+    finalPrice: readRecordValue(record, "Final Price"),
+    paymentStatus: readRecordValue(record, "Payment Status"),
+    paymentMethod: readRecordValue(record, "Payment Method"),
+    technicianNotes: readRecordValue(record, "Technician Notes"),
+    beforePhotoFolderUrl: readRecordValue(record, "Before Photo Folder URL"),
+    afterPhotoFolderUrl: readRecordValue(record, "After Photo Folder URL"),
+    dateCompleted: readRecordValue(record, "Date Completed"),
+    nextServiceDate: readRecordValue(record, "Next Service Date"),
+    createdAt: readRecordValue(record, "Created At"),
+    updatedAt: readRecordValue(record, "Updated At"),
   };
 }
 
@@ -189,5 +236,6 @@ module.exports = {
   jobFromBody,
   jobToClient,
   nowIso,
+  readRecordValue,
   todayDate,
 };

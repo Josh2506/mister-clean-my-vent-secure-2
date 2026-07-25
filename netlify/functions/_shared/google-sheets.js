@@ -134,10 +134,10 @@ function buildHeaderIndex(actualHeaders, expectedHeaders) {
     return null;
   }
 
-  return expectedHeaders.map((header, fallbackIndex) => {
+  return expectedHeaders.map((header) => {
     const names = [header, ...(headerAliases[header] || [])];
     const matchedName = names.find((name) => actualIndex.has(normalizeHeader(name)));
-    return matchedName ? actualIndex.get(normalizeHeader(matchedName)) : fallbackIndex;
+    return matchedName ? actualIndex.get(normalizeHeader(matchedName)) : -1;
   });
 }
 
@@ -150,6 +150,12 @@ function valuesToRecords(values = [], tabName) {
     const record = { rowNumber: index + 2 };
     headers.forEach((header, headerIndex) => {
       record[header] = row[headerIndexes[headerIndex]] || "";
+    });
+    actualHeaders.forEach((header, actualIndex) => {
+      const rawHeader = String(header || "").trim();
+      if (rawHeader && record[rawHeader] === undefined) {
+        record[rawHeader] = row[actualIndex] || "";
+      }
     });
     return record;
   });
