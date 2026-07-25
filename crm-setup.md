@@ -64,11 +64,30 @@ Add these in Netlify under Site configuration, then Environment variables:
 - `GOOGLE_PRIVATE_KEY`
 - `GOOGLE_DRIVE_PHOTOS_FOLDER_ID`
 - `CRM_ADMIN_EMAILS`
+- `CRM_ADMIN_PASSWORD_HASH`
 - `CRM_SESSION_SECRET`
 - `CRM_RATE_LIMIT_WINDOW_MS`
 - `CRM_RATE_LIMIT_MAX_REQUESTS`
 
 Use `.env.example` only as a template. Do not paste real keys into GitHub.
+
+To create `CRM_ADMIN_PASSWORD_HASH`, run:
+
+```bash
+npm run hash:crm-password
+```
+
+Paste the generated `scrypt$...` value into Netlify as `CRM_ADMIN_PASSWORD_HASH`. Do not paste your plain password into GitHub.
+
+## First CRM Route
+
+After the environment variables are configured and the branch deploys on Netlify, open:
+
+```text
+https://www.mistercleanmyvent.com/admin
+```
+
+The public site will not link to this page. The page is also marked `noindex`, and customer data is only returned by authenticated server-side CRM endpoints.
 
 ## PWA Plan
 
@@ -96,4 +115,3 @@ The installed app name should be `Mister Clean My Vent CRM`.
 ## Backup Plan
 
 Google Sheets can be exported manually as CSV or XLSX. A later CRM phase can add an admin export button and scheduled backups.
-
