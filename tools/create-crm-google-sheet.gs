@@ -1,0 +1,125 @@
+const CRM_SPREADSHEET_NAME = "Mister Clean My Vent CRM";
+
+const CRM_TABS = {
+  Customers: [
+    "Customer ID",
+    "First Name",
+    "Last Name",
+    "Phone",
+    "Email",
+    "Street Address",
+    "City",
+    "State",
+    "ZIP Code",
+    "Lead Source",
+    "Neighborhood or Community",
+    "Preferred Contact Method",
+    "Date Added",
+    "Customer Status",
+    "General Notes",
+    "Created At",
+    "Updated At",
+    "Archived"
+  ],
+  Jobs: [
+    "Job ID",
+    "Customer ID",
+    "Appointment Date",
+    "Appointment Time",
+    "Job Status",
+    "Service Type",
+    "Service Description",
+    "Quoted Price",
+    "Final Price",
+    "Payment Status",
+    "Payment Method",
+    "Technician Notes",
+    "Before Photo Folder URL",
+    "After Photo Folder URL",
+    "Date Completed",
+    "Next Service Date",
+    "Created At",
+    "Updated At",
+    "Archived"
+  ],
+  Reminders: [
+    "Reminder ID",
+    "Customer ID",
+    "Job ID",
+    "Reminder Type",
+    "Due Date",
+    "Reminder Status",
+    "Contact Method",
+    "Date Contacted",
+    "Customer Response",
+    "Follow-Up Date",
+    "Notes",
+    "Created At",
+    "Updated At"
+  ],
+  Leads: [
+    "Lead ID",
+    "First Name",
+    "Last Name",
+    "Phone",
+    "Email",
+    "Address",
+    "City",
+    "ZIP Code",
+    "Lead Source",
+    "Campaign",
+    "Neighborhood or Community",
+    "Service Requested",
+    "Date Received",
+    "Lead Status",
+    "Estimate Amount",
+    "Follow-Up Date",
+    "Notes",
+    "Converted Customer ID",
+    "Created At",
+    "Updated At"
+  ],
+  Services: [
+    "Service ID",
+    "Service Name",
+    "Default Price",
+    "Default Reminder Months",
+    "Active",
+    "Notes"
+  ]
+};
+
+const STARTER_SERVICES = [
+  ["svc_dryer_vent_cleaning", "Dryer Vent Cleaning", "", "12", "TRUE", "Annual reminder by default"],
+  ["svc_exterior_dryer_vent_cleaning", "Exterior Dryer Vent Cleaning", "", "12", "TRUE", ""],
+  ["svc_gutter_cleaning", "Gutter Cleaning", "", "6", "TRUE", ""],
+  ["svc_house_washing", "House Washing", "", "24", "TRUE", ""],
+  ["svc_patio_cleaning", "Patio Cleaning", "", "12", "TRUE", ""],
+  ["svc_driveway_cleaning", "Driveway Cleaning", "", "12", "TRUE", ""],
+  ["svc_pressure_washing", "Pressure Washing", "", "12", "TRUE", ""],
+  ["svc_other", "Other", "", "", "TRUE", ""]
+];
+
+function createMisterCleanMyVentCrmSheet() {
+  const spreadsheet = SpreadsheetApp.create(CRM_SPREADSHEET_NAME);
+
+  Object.entries(CRM_TABS).forEach(([tabName, headings], index) => {
+    const sheet = index === 0
+      ? spreadsheet.getSheets()[0].setName(tabName)
+      : spreadsheet.insertSheet(tabName);
+
+    sheet.getRange(1, 1, 1, headings.length).setValues([headings]);
+    sheet.setFrozenRows(1);
+    sheet.getRange(1, 1, 1, headings.length).setFontWeight("bold");
+    sheet.autoResizeColumns(1, headings.length);
+
+    if (tabName === "Services") {
+      sheet.getRange(2, 1, STARTER_SERVICES.length, STARTER_SERVICES[0].length).setValues(STARTER_SERVICES);
+      sheet.autoResizeColumns(1, headings.length);
+    }
+  });
+
+  Logger.log("CRM spreadsheet created: " + spreadsheet.getUrl());
+  Logger.log("Spreadsheet ID: " + spreadsheet.getId());
+}
+

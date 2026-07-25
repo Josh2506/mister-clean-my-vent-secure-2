@@ -1,0 +1,25 @@
+{
+  "name": "Mister Clean My Vent CRM",
+  "short_name": "MCMV CRM",
+  "start_url": "/admin",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#143d1f",
+  "theme_color": "#143d1f",
+  "description": "Private customer and service dashboard for Mister Clean My Vent.",
+  "icons": [
+    {
+      "src": "/assets/mister-clean-my-vent-logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/mister-clean-my-vent-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
+

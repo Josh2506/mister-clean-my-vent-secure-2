@@ -4,3 +4,19 @@
     Content-Security-Policy = "upgrade-insecure-requests"
     Strict-Transport-Security = "max-age=31536000; includeSubDomains"
 
+[[headers]]
+  for = "/admin"
+  [headers.values]
+    Cache-Control = "no-store"
+    X-Robots-Tag = "noindex, nofollow"
+
+[[headers]]
+  for = "/api/crm/*"
+  [headers.values]
+    Cache-Control = "no-store"
+    X-Robots-Tag = "noindex, nofollow"
+
+[[headers]]
+  for = "/crm-assets/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"

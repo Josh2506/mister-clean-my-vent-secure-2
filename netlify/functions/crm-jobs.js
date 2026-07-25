@@ -1,0 +1,59 @@
+const { requireSession } = require("./_shared/auth");
+const { appendRecord, findRecordById, getRows, updateRecord } = require("./_shared/google-sheets");
+const { isArchived, jobFromBody, jobToClient } = require("./_shared/crm-records");
+const { json, readJson } = require("./_shared/http");
+
+exports.handler = async function handler(event) {
+  const auth = requireSession(event);
+  if (auth.response) {
+    return auth.response;
+  }
+
+  try {
+    if (event.httpMethod === "GET") {
+      const customerId = event.queryStringParameters?.customerId || "";
+      const rows = await getRows("Jobs");
+      const jobs = rows
+        .filter((row) => !isArchived(row))
+        .filter((row) => !customerId || row["Customer ID"] === customerId)
+        .map(jobToClient)
+        .sort((a, b) => `${b.appointmentDate || ""}${b.createdAt || ""}`.localeCompare(`${a.appointmentDate || ""}${a.createdAt || ""}`));
+      return json(200, { jobs });
+    }
+
+    if (event.httpMethod === "POST") {
+      const body = readJson(event);
+      const job = jobFromBody(body);
+      await appendRecord("Jobs", job);
+      return json(201, { job: jobToClient(job) });
+    }
+
+    if (event.httpMethod === "PUT") {
+      const body = readJson(event);
+      const jobId = body.jobId || body.id;
+      const existing = await findRecordById("Jobs", "Job ID", jobId);
+      if (!existing) {
+        return json(404, { error: "Job not found." });
+      }
+      const updated = jobFromBody({ ...body, jobId }, existing);
+      await updateRecord("Jobs", existing.rowNumber, updated);
+      return json(200, { job: jobToClient(updated) });
+    }
+
+    if (event.httpMethod === "DELETE") {
+      const jobId = event.queryStringParameters?.id;
+      const existing = await findRecordById("Jobs", "Job ID", jobId);
+      if (!existing) {
+        return json(404, { error: "Job not found." });
+      }
+      const archived = jobFromBody({ ...existing, jobId, archived: "TRUE" }, existing);
+      await updateRecord("Jobs", existing.rowNumber, archived);
+      return json(200, { ok: true });
+    }
+
+    return json(405, { error: "Method not allowed." });
+  } catch (error) {
+    return json(error.statusCode || 500, { error: error.message || "CRM job request failed." });
+  }
+};
+

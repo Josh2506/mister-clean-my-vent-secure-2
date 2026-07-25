@@ -1,0 +1,10 @@
+{
+  "name": "mister-clean-my-vent-website",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "node --check script.js && node --check netlify/functions/*.js && node --check netlify/functions/_shared/*.js && node tests/crm.test.mjs",
+    "test": "node tests/crm.test.mjs",
+    "hash:crm-password": "node tools/hash-crm-password.mjs"
+  }
+}
