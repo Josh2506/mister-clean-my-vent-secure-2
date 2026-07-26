@@ -489,6 +489,14 @@ function renderProfile() {
   document.querySelector("#edit-selected-customer").addEventListener("click", () => openCustomerModal(customer));
   document.querySelector("#add-work-order-profile").addEventListener("click", () => openJobModal(customer, "work-order"));
   document.querySelector("#add-service-button").addEventListener("click", () => openJobModal(customer, "service"));
+  document.querySelectorAll("[data-edit-service]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const job = profileJobs.find((item) => item.id === button.dataset.editService);
+      if (job) {
+        openJobModal(customer, "service", job);
+      }
+    });
+  });
 }
 
 function renderCustomerCards(customers) {
@@ -535,6 +543,11 @@ function renderJobCards(jobs, showCustomer) {
         <p>Status: ${escapeHtml(job.jobStatus || "Not set")} | Payment: ${escapeHtml(job.paymentStatus || "Not set")}</p>
         <p>Next service: ${escapeHtml(formatDisplayDate(job.nextServiceDate))} ${due}</p>
         ${job.technicianNotes ? `<p>${escapeHtml(job.technicianNotes)}</p>` : ""}
+        ${showCustomer ? "" : `
+          <div class="crm-actions">
+            <button class="crm-btn secondary" type="button" data-edit-service="${escapeHtml(job.id)}">Edit Service</button>
+          </div>
+        `}
       </article>
     `;
   }).join("");
@@ -693,8 +706,9 @@ function openWorkOrderPicker() {
   });
 }
 
-function openJobModal(customer, mode = "service") {
+function openJobModal(customer, mode = "service", job = null) {
   const isWorkOrder = mode === "work-order";
+  const isEditing = Boolean(job);
   const today = state.dashboard?.today || new Date().toISOString().slice(0, 10);
   const modal = document.querySelector("#job-modal");
   modal.classList.add("open");
@@ -703,24 +717,25 @@ function openJobModal(customer, mode = "service") {
   modal.setAttribute("aria-modal", "true");
   modal.innerHTML = `
     <form class="crm-modal-card" id="job-form">
-      <h2>${isWorkOrder ? "Add Work Order" : "Add Service"} for ${escapeHtml(customer.name)}</h2>
+      <h2>${isEditing ? "Edit Service" : isWorkOrder ? "Add Work Order" : "Add Service"} for ${escapeHtml(customer.name)}</h2>
       <input type="hidden" name="customerId" value="${escapeHtml(customer.id)}">
+      <input type="hidden" name="jobId" value="${escapeHtml(job?.id || "")}">
       <div class="crm-form-grid">
-        ${field("Appointment Date", "appointmentDate", isWorkOrder ? "" : today, false, "date")}
-        ${field("Appointment Time", "appointmentTime", "", false, "time")}
-        ${selectField("Job Status", "jobStatus", isWorkOrder ? "Scheduled" : "Completed", ["Lead", "Estimate Scheduled", "Estimate Sent", "Scheduled", "In Progress", "Completed", "Canceled"])}
-        ${selectField("Service Type", "serviceType", "Dryer Vent Cleaning", serviceOptions)}
-        ${field("Quoted Price", "quotedPrice", "")}
-        ${field("Final Price", "finalPrice", "")}
-        ${selectField("Payment Status", "paymentStatus", "Not Invoiced", ["Not Invoiced", "Unpaid", "Partially Paid", "Paid"])}
-        ${field("Payment Method", "paymentMethod", "")}
-        ${field("Date Completed", "dateCompleted", isWorkOrder ? "" : today, false, "date")}
-        ${field("Next Service Date", "nextServiceDate", "", false, "date")}
-        ${textareaField("Service Description", "serviceDescription", "")}
-        ${textareaField("Technician Notes", "technicianNotes", "")}
+        ${field("Appointment Date", "appointmentDate", job?.appointmentDate || (isWorkOrder ? "" : today), false, "date")}
+        ${field("Appointment Time", "appointmentTime", job?.appointmentTime || "", false, "time")}
+        ${selectField("Job Status", "jobStatus", job?.jobStatus || (isWorkOrder ? "Scheduled" : "Completed"), ["Lead", "Estimate Scheduled", "Estimate Sent", "Scheduled", "In Progress", "Completed", "Canceled"])}
+        ${selectField("Service Type", "serviceType", job?.serviceType || "Dryer Vent Cleaning", serviceOptions)}
+        ${field("Quoted Price", "quotedPrice", job?.quotedPrice || "")}
+        ${field("Final Price", "finalPrice", job?.finalPrice || "")}
+        ${selectField("Payment Status", "paymentStatus", job?.paymentStatus || "Not Invoiced", ["Not Invoiced", "Unpaid", "Partially Paid", "Paid"])}
+        ${field("Payment Method", "paymentMethod", job?.paymentMethod || "")}
+        ${field("Date Completed", "dateCompleted", job?.dateCompleted || (isWorkOrder ? "" : today), false, "date")}
+        ${field("Next Service Date", "nextServiceDate", job?.nextServiceDate || "", false, "date")}
+        ${textareaField("Service Description", "serviceDescription", job?.serviceDescription || "")}
+        ${textareaField("Technician Notes", "technicianNotes", job?.technicianNotes || "")}
       </div>
       <div class="crm-actions">
-        <button class="crm-btn" type="submit">${isWorkOrder ? "Save Work Order" : "Save Service"}</button>
+        <button class="crm-btn" type="submit">${isEditing ? "Save Changes" : isWorkOrder ? "Save Work Order" : "Save Service"}</button>
         <button class="crm-btn secondary" type="button" data-close-modal>Cancel</button>
       </div>
       <p class="crm-status" id="job-status"></p>
@@ -740,7 +755,10 @@ function openJobModal(customer, mode = "service") {
     status.classList.remove("error");
     submit.disabled = true;
     try {
-      await api("/api/crm/jobs", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget))) });
+      await api("/api/crm/jobs", {
+        method: isEditing ? "PUT" : "POST",
+        body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget))),
+      });
       closeModal(modal);
       await loadData(false);
       state.selectedCustomer = state.customers.find((item) => item.id === customer.id) || customer;
@@ -751,7 +769,7 @@ function openJobModal(customer, mode = "service") {
       renderDue();
       renderProfile();
       switchScreen("profile");
-      showNotice(`${isWorkOrder ? "Work order" : "Service"} saved to Google Sheets.`);
+      showNotice(`${isEditing ? "Service changes" : isWorkOrder ? "Work order" : "Service"} saved to Google Sheets.`);
     } catch (error) {
       status.textContent = error.message;
       status.classList.add("error");

@@ -132,6 +132,23 @@ assert.equal(records.hasJobData({ "Job ID": "job_blank_only", "Customer ID": cus
 assert.equal(records.hasJobData(job), true, "real job sheet rows should be included");
 assert.equal(records.dateDiffDays("2026-08-24", "2026-07-24"), 31);
 
+const editedJob = records.jobFromBody({
+  jobId: job["Job ID"],
+  customerId: customer["Customer ID"],
+  serviceType: "Gutter Cleaning",
+  jobStatus: "Completed",
+  finalPrice: "275",
+  dateCompleted: "2026-07-24",
+  nextServiceDate: "",
+  technicianNotes: "Updated from the customer service history.",
+}, job);
+assert.equal(editedJob["Job ID"], job["Job ID"], "editing a service should preserve its job ID");
+assert.equal(editedJob["Customer ID"], customer["Customer ID"], "editing a service should preserve its customer");
+assert.equal(editedJob["Service Type"], "Gutter Cleaning", "editing a service should update its service type");
+assert.equal(editedJob["Final Price"], "275", "editing a service should update its final price");
+assert.equal(editedJob["Date Completed"], "2026-07-24", "editing a service should update its completion date");
+assert.equal(editedJob["Next Service Date"], "", "editing a service should allow an old date to be cleared");
+
 const missingCustomerIdDelete = await customers.handler({
   httpMethod: "DELETE",
   headers: { cookie: `mcmv_crm_session=${encodeURIComponent(sessionCookie)}` },

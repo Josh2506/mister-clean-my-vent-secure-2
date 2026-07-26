@@ -160,6 +160,15 @@ function customerToClient(record) {
 function jobFromBody(body, existing = {}) {
   const timestamp = nowIso();
   const customerId = clean(body.customerId || body["Customer ID"] || existing["Customer ID"]);
+  const bodyField = (camelName, sheetName) => {
+    if (Object.prototype.hasOwnProperty.call(body, camelName)) {
+      return clean(body[camelName]);
+    }
+    if (Object.prototype.hasOwnProperty.call(body, sheetName)) {
+      return clean(body[sheetName]);
+    }
+    return clean(existing[sheetName]);
+  };
   if (!customerId) {
     const error = new Error("Customer ID is required.");
     error.statusCode = 400;
@@ -169,20 +178,20 @@ function jobFromBody(body, existing = {}) {
   return {
     "Job ID": existing["Job ID"] || body.jobId || id("job"),
     "Customer ID": customerId,
-    "Appointment Date": clean(body.appointmentDate || body["Appointment Date"] || existing["Appointment Date"]),
-    "Appointment Time": clean(body.appointmentTime || body["Appointment Time"] || existing["Appointment Time"]),
-    "Job Status": clean(body.jobStatus || body["Job Status"] || existing["Job Status"] || "Scheduled"),
-    "Service Type": clean(body.serviceType || body["Service Type"] || existing["Service Type"] || "Dryer Vent Cleaning"),
-    "Service Description": clean(body.serviceDescription || body["Service Description"] || existing["Service Description"]),
-    "Quoted Price": clean(body.quotedPrice || body["Quoted Price"] || existing["Quoted Price"]),
-    "Final Price": clean(body.finalPrice || body["Final Price"] || existing["Final Price"]),
-    "Payment Status": clean(body.paymentStatus || body["Payment Status"] || existing["Payment Status"] || "Not Invoiced"),
-    "Payment Method": clean(body.paymentMethod || body["Payment Method"] || existing["Payment Method"]),
-    "Technician Notes": clean(body.technicianNotes || body["Technician Notes"] || existing["Technician Notes"]),
-    "Before Photo Folder URL": clean(body.beforePhotoFolderUrl || body["Before Photo Folder URL"] || existing["Before Photo Folder URL"]),
-    "After Photo Folder URL": clean(body.afterPhotoFolderUrl || body["After Photo Folder URL"] || existing["After Photo Folder URL"]),
-    "Date Completed": clean(body.dateCompleted || body["Date Completed"] || existing["Date Completed"]),
-    "Next Service Date": clean(body.nextServiceDate || body["Next Service Date"] || existing["Next Service Date"]),
+    "Appointment Date": bodyField("appointmentDate", "Appointment Date"),
+    "Appointment Time": bodyField("appointmentTime", "Appointment Time"),
+    "Job Status": bodyField("jobStatus", "Job Status") || "Scheduled",
+    "Service Type": bodyField("serviceType", "Service Type") || "Dryer Vent Cleaning",
+    "Service Description": bodyField("serviceDescription", "Service Description"),
+    "Quoted Price": bodyField("quotedPrice", "Quoted Price"),
+    "Final Price": bodyField("finalPrice", "Final Price"),
+    "Payment Status": bodyField("paymentStatus", "Payment Status") || "Not Invoiced",
+    "Payment Method": bodyField("paymentMethod", "Payment Method"),
+    "Technician Notes": bodyField("technicianNotes", "Technician Notes"),
+    "Before Photo Folder URL": bodyField("beforePhotoFolderUrl", "Before Photo Folder URL"),
+    "After Photo Folder URL": bodyField("afterPhotoFolderUrl", "After Photo Folder URL"),
+    "Date Completed": bodyField("dateCompleted", "Date Completed"),
+    "Next Service Date": bodyField("nextServiceDate", "Next Service Date"),
     "Created At": existing["Created At"] || timestamp,
     "Updated At": timestamp,
     Archived: clean(body.archived || body.Archived || existing.Archived || "FALSE"),

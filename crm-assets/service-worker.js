@@ -1,4 +1,4 @@
-const CRM_SW_VERSION = "2026-07-26-monthly-work-orders";
+const CRM_SW_VERSION = "2026-07-26-edit-service-history";
 
 self.addEventListener("install", () => {
   self.skipWaiting();
