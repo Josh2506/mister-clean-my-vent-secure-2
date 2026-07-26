@@ -181,6 +181,39 @@ textarea {
   margin: 0 0 10px;
 }
 
+.crm-panel-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.crm-panel-heading h2,
+.crm-panel-heading p {
+  margin: 0;
+}
+
+.crm-panel-heading p {
+  margin-top: 6px;
+  color: var(--crm-muted);
+  line-height: 1.4;
+}
+
+.crm-month-picker {
+  width: min(220px, 100%);
+  margin: 0;
+}
+
+.crm-monthly-stats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 18px;
+}
+
+.crm-subheading {
+  margin: 0 0 10px;
+}
+
 .crm-stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -477,6 +510,20 @@ textarea {
   .crm-field select,
   .crm-field textarea {
     min-height: 52px;
+  }
+
+  .crm-panel-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .crm-panel-heading .crm-btn,
+  .crm-month-picker {
+    width: 100%;
+  }
+
+  .crm-monthly-stats {
+    grid-template-columns: 1fr;
   }
 }
 

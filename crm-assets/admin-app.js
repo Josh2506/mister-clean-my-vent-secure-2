@@ -6,6 +6,7 @@ const state = {
   dashboard: null,
   jobs: [],
   allJobs: [],
+  dashboardMonth: "",
 };
 
 const serviceOptions = [
@@ -249,13 +250,71 @@ function serviceVisitLabel(count) {
   return `${count} service visit${count === 1 ? "" : "s"}`;
 }
 
+function monthKey(dateString) {
+  return String(dateString || "").slice(0, 7);
+}
+
+function monthLabel(month) {
+  if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+    return "Selected month";
+  }
+  const [year, monthNumber] = month.split("-").map(Number);
+  return new Date(year, monthNumber - 1, 1).toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function moneyValue(value) {
+  const amount = Number(String(value || "").replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+function formatMoney(amount) {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(amount || 0);
+}
+
+function dashboardMonthOptions() {
+  const currentMonth = monthKey(state.dashboard?.today || new Date().toISOString());
+  const months = new Set([currentMonth]);
+  state.allJobs.forEach((job) => {
+    const month = monthKey(job.dateCompleted || job.appointmentDate);
+    if (month) {
+      months.add(month);
+    }
+  });
+  return [...months].sort().reverse();
+}
+
+function monthlyJobSummary(month) {
+  const monthJobs = state.allJobs.filter((job) => monthKey(job.dateCompleted || job.appointmentDate) === month);
+  const completedJobs = monthJobs.filter((job) => job.jobStatus === "Completed" || Boolean(job.dateCompleted));
+  const scheduledJobs = monthJobs.filter((job) => !["Completed", "Canceled"].includes(job.jobStatus) && !job.dateCompleted);
+  const revenue = completedJobs.reduce((total, job) => total + moneyValue(job.finalPrice || job.quotedPrice), 0);
+  const completedWithCustomers = completedJobs.map((job) => ({
+    ...job,
+    customer: state.customers.find((customer) => customer.id === job.customerId) || null,
+  }));
+  return { completedJobs: completedWithCustomers, scheduledJobs, revenue };
+}
+
 function renderDashboard() {
   const dashboard = state.dashboard;
+  const availableMonths = dashboardMonthOptions();
+  if (!state.dashboardMonth || !availableMonths.includes(state.dashboardMonth)) {
+    state.dashboardMonth = monthKey(dashboard.today);
+  }
+  const monthly = monthlyJobSummary(state.dashboardMonth);
   document.querySelector("#screen-dashboard").innerHTML = `
     <div class="crm-page-title">
       <h1>Today</h1>
       <p>${escapeHtml(dashboard.today)} service dashboard.</p>
       <div class="crm-actions">
+        <button class="crm-btn" type="button" id="add-work-order-button">Add Work Order</button>
         <button class="crm-btn" type="button" id="add-customer-button">Add Customer</button>
         <button class="crm-btn secondary" type="button" id="refresh-button">Refresh</button>
       </div>
@@ -275,13 +334,39 @@ function renderDashboard() {
         <div class="crm-list">${renderJobCards(dashboard.todayJobs, true)}</div>
       </section>
       <section class="crm-panel crm-col-12">
+        <div class="crm-panel-heading">
+          <div>
+            <h2>Monthly Progress</h2>
+            <p>Completed work and scheduled jobs for ${escapeHtml(monthLabel(state.dashboardMonth))}.</p>
+          </div>
+          <div class="crm-field crm-month-picker">
+            <label for="dashboard-month">Month</label>
+            <select id="dashboard-month">
+              ${availableMonths.map((month) => `<option value="${escapeHtml(month)}" ${month === state.dashboardMonth ? "selected" : ""}>${escapeHtml(monthLabel(month))}</option>`).join("")}
+            </select>
+          </div>
+        </div>
+        <div class="crm-stats crm-monthly-stats">
+          <div class="crm-stat"><strong>${monthly.completedJobs.length}</strong><span>Jobs completed</span></div>
+          <div class="crm-stat"><strong>${monthly.scheduledJobs.length}</strong><span>Still scheduled</span></div>
+          <div class="crm-stat"><strong>${escapeHtml(formatMoney(monthly.revenue))}</strong><span>Completed revenue</span></div>
+        </div>
+        <h3 class="crm-subheading">Jobs Done</h3>
+        <div class="crm-list">${renderJobCards(monthly.completedJobs, true)}</div>
+      </section>
+      <section class="crm-panel crm-col-12">
         <h2>Unpaid or Partially Paid</h2>
         <div class="crm-list">${renderJobCards(dashboard.unpaidJobs, true)}</div>
       </section>
     </div>
   `;
+  document.querySelector("#add-work-order-button").addEventListener("click", openWorkOrderPicker);
   document.querySelector("#add-customer-button").addEventListener("click", () => openCustomerModal());
   document.querySelector("#refresh-button").addEventListener("click", showDashboard);
+  document.querySelector("#dashboard-month").addEventListener("change", (event) => {
+    state.dashboardMonth = event.target.value;
+    renderDashboard();
+  });
 }
 
 function renderCustomers() {
@@ -366,7 +451,7 @@ function renderProfile() {
         ${customer.phone ? `<a class="crm-btn" href="tel:${escapeHtml(customer.phone.replace(/[^0-9+]/g, ""))}">Call</a>` : ""}
         ${customer.streetAddress ? `<a class="crm-btn secondary" target="_blank" rel="noopener" href="${mapsUrl(customer)}">Directions</a>` : ""}
         <button class="crm-btn secondary" type="button" id="edit-selected-customer">Edit</button>
-        <button class="crm-btn" type="button" id="add-job-button">Add Service Visit</button>
+        <button class="crm-btn" type="button" id="add-work-order-profile">Add Work Order</button>
       </div>
     </div>
     <div class="crm-grid">
@@ -389,14 +474,21 @@ function renderProfile() {
         <p>Add each visit here, even when the same customer books a different service later.</p>
       </section>
       <section class="crm-panel crm-col-12">
-        <h2>Service History</h2>
+        <div class="crm-panel-heading">
+          <div>
+            <h2>Service History</h2>
+            <p>Completed visits and previous work for this customer.</p>
+          </div>
+          <button class="crm-btn" type="button" id="add-service-button">Add Service</button>
+        </div>
         <div class="crm-list">${renderJobCards(profileJobs, false)}</div>
       </section>
     </div>
   `;
 
   document.querySelector("#edit-selected-customer").addEventListener("click", () => openCustomerModal(customer));
-  document.querySelector("#add-job-button").addEventListener("click", () => openJobModal(customer));
+  document.querySelector("#add-work-order-profile").addEventListener("click", () => openJobModal(customer, "work-order"));
+  document.querySelector("#add-service-button").addEventListener("click", () => openJobModal(customer, "service"));
 }
 
 function renderCustomerCards(customers) {
@@ -560,7 +652,50 @@ function openCustomerModal(customer = null) {
   });
 }
 
-function openJobModal(customer) {
+function openWorkOrderPicker() {
+  if (!state.customers.length) {
+    showNotice("Add a customer before creating a work order.", "error");
+    openCustomerModal();
+    return;
+  }
+  const modal = document.querySelector("#job-modal");
+  modal.classList.add("open");
+  modal.setAttribute("aria-hidden", "false");
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.innerHTML = `
+    <form class="crm-modal-card crm-picker-card" id="work-order-customer-form">
+      <h2>Add Work Order</h2>
+      <p>Choose the customer for this work order.</p>
+      <div class="crm-field">
+        <label for="work-order-customer">Customer</label>
+        <select id="work-order-customer" name="customerId" required>
+          <option value="">Select a customer...</option>
+          ${[...state.customers].sort((a, b) => a.name.localeCompare(b.name)).map((customer) => `<option value="${escapeHtml(customer.id)}">${escapeHtml(customer.name || "Unnamed Customer")} ${customer.streetAddress ? `— ${escapeHtml(customer.streetAddress)}` : ""}</option>`).join("")}
+        </select>
+      </div>
+      <div class="crm-actions">
+        <button class="crm-btn" type="submit">Continue</button>
+        <button class="crm-btn secondary" type="button" data-close-modal>Cancel</button>
+      </div>
+    </form>
+  `;
+  setModalLock();
+  const form = modal.querySelector("#work-order-customer-form");
+  bindMobileInputFocus(form);
+  modal.querySelector("[data-close-modal]").addEventListener("click", () => closeModal(modal));
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const customer = state.customers.find((item) => item.id === new FormData(form).get("customerId"));
+    if (customer) {
+      openJobModal(customer, "work-order");
+    }
+  });
+}
+
+function openJobModal(customer, mode = "service") {
+  const isWorkOrder = mode === "work-order";
+  const today = state.dashboard?.today || new Date().toISOString().slice(0, 10);
   const modal = document.querySelector("#job-modal");
   modal.classList.add("open");
   modal.setAttribute("aria-hidden", "false");
@@ -568,24 +703,24 @@ function openJobModal(customer) {
   modal.setAttribute("aria-modal", "true");
   modal.innerHTML = `
     <form class="crm-modal-card" id="job-form">
-      <h2>Add Service Visit for ${escapeHtml(customer.name)}</h2>
+      <h2>${isWorkOrder ? "Add Work Order" : "Add Service"} for ${escapeHtml(customer.name)}</h2>
       <input type="hidden" name="customerId" value="${escapeHtml(customer.id)}">
       <div class="crm-form-grid">
-        ${field("Appointment Date", "appointmentDate", "", false, "date")}
+        ${field("Appointment Date", "appointmentDate", isWorkOrder ? "" : today, false, "date")}
         ${field("Appointment Time", "appointmentTime", "", false, "time")}
-        ${selectField("Job Status", "jobStatus", "Scheduled", ["Lead", "Estimate Scheduled", "Estimate Sent", "Scheduled", "In Progress", "Completed", "Canceled"])}
+        ${selectField("Job Status", "jobStatus", isWorkOrder ? "Scheduled" : "Completed", ["Lead", "Estimate Scheduled", "Estimate Sent", "Scheduled", "In Progress", "Completed", "Canceled"])}
         ${selectField("Service Type", "serviceType", "Dryer Vent Cleaning", serviceOptions)}
         ${field("Quoted Price", "quotedPrice", "")}
         ${field("Final Price", "finalPrice", "")}
         ${selectField("Payment Status", "paymentStatus", "Not Invoiced", ["Not Invoiced", "Unpaid", "Partially Paid", "Paid"])}
         ${field("Payment Method", "paymentMethod", "")}
-        ${field("Date Completed", "dateCompleted", "", false, "date")}
+        ${field("Date Completed", "dateCompleted", isWorkOrder ? "" : today, false, "date")}
         ${field("Next Service Date", "nextServiceDate", "", false, "date")}
         ${textareaField("Service Description", "serviceDescription", "")}
         ${textareaField("Technician Notes", "technicianNotes", "")}
       </div>
       <div class="crm-actions">
-        <button class="crm-btn" type="submit">Save Service Visit</button>
+        <button class="crm-btn" type="submit">${isWorkOrder ? "Save Work Order" : "Save Service"}</button>
         <button class="crm-btn secondary" type="button" data-close-modal>Cancel</button>
       </div>
       <p class="crm-status" id="job-status"></p>
@@ -616,7 +751,7 @@ function openJobModal(customer) {
       renderDue();
       renderProfile();
       switchScreen("profile");
-      showNotice("Service saved to Google Sheets.");
+      showNotice(`${isWorkOrder ? "Work order" : "Service"} saved to Google Sheets.`);
     } catch (error) {
       status.textContent = error.message;
       status.classList.add("error");
