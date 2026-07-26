@@ -5,6 +5,7 @@ const state = {
   selectedCustomer: null,
   dashboard: null,
   jobs: [],
+  allJobs: [],
 };
 
 const serviceOptions = [
@@ -31,9 +32,16 @@ function escapeHtml(value) {
 }
 
 async function api(path, options = {}) {
-  const response = await fetch(path, {
+  const method = options.method || "GET";
+  const requestPath = method === "GET" ? `${path}${path.includes("?") ? "&" : "?"}_=${Date.now()}` : path;
+  const response = await fetch(requestPath, {
+    cache: "no-store",
     credentials: "same-origin",
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    headers: {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
     ...options,
   });
   const data = await response.json().catch(() => ({}));
@@ -41,6 +49,29 @@ async function api(path, options = {}) {
     throw new Error(data.error || "CRM request failed.");
   }
   return data;
+}
+
+function showNotice(message, type = "success") {
+  const notice = document.querySelector("#crm-toast");
+  if (!notice) {
+    return;
+  }
+  notice.textContent = message;
+  notice.classList.toggle("error", type === "error");
+  notice.classList.add("show");
+  window.clearTimeout(showNotice.timeout);
+  showNotice.timeout = window.setTimeout(() => {
+    notice.classList.remove("show");
+  }, 5200);
+}
+
+function switchScreen(screenName) {
+  document.querySelectorAll(".crm-bottom-nav button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.screen === screenName);
+  });
+  document.querySelectorAll(".crm-screen").forEach((screen) => {
+    screen.classList.toggle("active", screen.id === `screen-${screenName}`);
+  });
 }
 
 function showLogin(message = "") {
@@ -83,6 +114,7 @@ function showLogin(message = "") {
       submit.disabled = false;
     }
   });
+  bindMobileInputFocus(app);
 }
 
 function shell() {
@@ -104,6 +136,7 @@ function shell() {
         <button type="button" data-screen="due">Due Soon</button>
         <button type="button" data-screen="profile">Profile</button>
       </nav>
+      <div class="crm-toast" id="crm-toast" role="status" aria-live="polite"></div>
       <div class="crm-content">
         <section id="screen-dashboard" class="crm-screen active"></section>
         <section id="screen-customers" class="crm-screen"></section>
@@ -122,12 +155,10 @@ function shell() {
 
   document.querySelectorAll(".crm-bottom-nav button").forEach((button) => {
     button.addEventListener("click", () => {
-      document.querySelectorAll(".crm-bottom-nav button").forEach((item) => item.classList.remove("active"));
-      button.classList.add("active");
-      document.querySelectorAll(".crm-screen").forEach((screen) => screen.classList.remove("active"));
-      document.querySelector(`#screen-${button.dataset.screen}`).classList.add("active");
+      switchScreen(button.dataset.screen);
     });
   });
+  bindMobileInputFocus(app);
 }
 
 function setModalLock() {
@@ -140,6 +171,82 @@ function focusFirstEditableField(form) {
   if (firstInput && window.matchMedia("(min-width: 821px)").matches) {
     window.setTimeout(() => firstInput.focus(), 80);
   }
+}
+
+function bindMobileInputFocus(root = document) {
+  const editableFields = root.querySelectorAll("input:not([type='hidden']):not([disabled]), textarea:not([disabled]), select:not([disabled])");
+  editableFields.forEach((fieldElement) => {
+    if (fieldElement.dataset.mobileFocusBound === "true") {
+      return;
+    }
+    fieldElement.dataset.mobileFocusBound = "true";
+    fieldElement.addEventListener("touchend", () => {
+      window.setTimeout(() => fieldElement.focus({ preventScroll: true }), 0);
+    }, { passive: true });
+  });
+}
+
+function toDateValue(dateString) {
+  if (!dateString) {
+    return 0;
+  }
+  const normalizedDate = String(dateString).slice(0, 10);
+  const date = new Date(`${normalizedDate}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
+function formatDisplayDate(dateString) {
+  if (!dateString) {
+    return "Not set";
+  }
+  const normalizedDate = String(dateString).slice(0, 10);
+  const date = new Date(`${normalizedDate}T00:00:00`);
+  if (Number.isNaN(date.getTime())) {
+    return normalizedDate;
+  }
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function jobServiceDate(job) {
+  return job.dateCompleted || job.appointmentDate || (job.createdAt ? job.createdAt.slice(0, 10) : "");
+}
+
+function sortJobsNewestFirst(jobs) {
+  return [...(jobs || [])].sort((jobA, jobB) => {
+    const dateDifference = toDateValue(jobServiceDate(jobB)) - toDateValue(jobServiceDate(jobA));
+    if (dateDifference !== 0) {
+      return dateDifference;
+    }
+    return String(jobB.createdAt || "").localeCompare(String(jobA.createdAt || ""));
+  });
+}
+
+function jobsForCustomer(customerId) {
+  return sortJobsNewestFirst(state.allJobs.filter((job) => job.customerId === customerId));
+}
+
+function getCustomerServiceSummary(customerId) {
+  const jobs = jobsForCustomer(customerId);
+  const lastJob = jobs[0] || null;
+  const nextServiceJob = jobs
+    .filter((job) => job.nextServiceDate)
+    .sort((jobA, jobB) => toDateValue(jobA.nextServiceDate) - toDateValue(jobB.nextServiceDate))[0] || null;
+
+  return {
+    count: jobs.length,
+    lastJob,
+    lastServiceDate: lastJob ? jobServiceDate(lastJob) : "",
+    lastServiceType: lastJob?.serviceType || "",
+    nextServiceDate: nextServiceJob?.nextServiceDate || "",
+  };
+}
+
+function serviceVisitLabel(count) {
+  return `${count} service visit${count === 1 ? "" : "s"}`;
 }
 
 function renderDashboard() {
@@ -185,11 +292,17 @@ function renderCustomers() {
       <div class="crm-actions">
         <input id="customer-search" type="search" placeholder="Search customers..." aria-label="Search customers">
         <button class="crm-btn" type="button" id="customer-add">Add Customer</button>
+        <button class="crm-btn secondary" type="button" id="customer-refresh">Refresh</button>
       </div>
     </div>
     <div class="crm-list" id="customer-list">${renderCustomerCards(state.customers)}</div>
   `;
   document.querySelector("#customer-add").addEventListener("click", () => openCustomerModal());
+  document.querySelector("#customer-refresh").addEventListener("click", async () => {
+    await loadData();
+    switchScreen("customers");
+    showNotice("Customer list refreshed from Google Sheets.");
+  });
   document.querySelector("#customer-search").addEventListener("input", (event) => {
     const search = event.target.value.toLowerCase();
     const filtered = state.customers.filter((customer) => [
@@ -206,6 +319,7 @@ function renderCustomers() {
     bindCustomerButtons();
   });
   bindCustomerButtons();
+  bindMobileInputFocus(document.querySelector("#screen-customers"));
 }
 
 function renderDue() {
@@ -238,6 +352,12 @@ function renderProfile() {
     return;
   }
 
+  const profileJobs = sortJobsNewestFirst(state.jobs.length ? state.jobs : jobsForCustomer(customer.id));
+  const lastJob = profileJobs[0] || null;
+  const nextServiceJob = profileJobs
+    .filter((job) => job.nextServiceDate)
+    .sort((jobA, jobB) => toDateValue(jobA.nextServiceDate) - toDateValue(jobB.nextServiceDate))[0] || null;
+
   screen.innerHTML = `
     <div class="crm-page-title">
       <h1>${escapeHtml(customer.name || "Customer")}</h1>
@@ -246,7 +366,7 @@ function renderProfile() {
         ${customer.phone ? `<a class="crm-btn" href="tel:${escapeHtml(customer.phone.replace(/[^0-9+]/g, ""))}">Call</a>` : ""}
         ${customer.streetAddress ? `<a class="crm-btn secondary" target="_blank" rel="noopener" href="${mapsUrl(customer)}">Directions</a>` : ""}
         <button class="crm-btn secondary" type="button" id="edit-selected-customer">Edit</button>
-        <button class="crm-btn" type="button" id="add-job-button">Add Service</button>
+        <button class="crm-btn" type="button" id="add-job-button">Add Service Visit</button>
       </div>
     </div>
     <div class="crm-grid">
@@ -259,8 +379,18 @@ function renderProfile() {
         <p><strong>Notes:</strong> ${escapeHtml(customer.notes || "No notes")}</p>
       </section>
       <section class="crm-panel crm-col-7">
+        <h2>Service Summary</h2>
+        <div class="crm-stats">
+          <div class="crm-stat"><strong>${profileJobs.length}</strong><span>Total service visits</span></div>
+          <div class="crm-stat"><strong>${escapeHtml(formatDisplayDate(lastJob ? jobServiceDate(lastJob) : ""))}</strong><span>Last service${lastJob?.serviceType ? `: ${escapeHtml(lastJob.serviceType)}` : ""}</span></div>
+          <div class="crm-stat"><strong>${escapeHtml(formatDisplayDate(nextServiceJob?.nextServiceDate || ""))}</strong><span>Next service</span></div>
+          <div class="crm-stat"><strong>${escapeHtml(lastJob?.paymentStatus || "Not set")}</strong><span>Last payment status</span></div>
+        </div>
+        <p>Add each visit here, even when the same customer books a different service later.</p>
+      </section>
+      <section class="crm-panel crm-col-12">
         <h2>Service History</h2>
-        <div class="crm-list">${renderJobCards(state.jobs, false)}</div>
+        <div class="crm-list">${renderJobCards(profileJobs, false)}</div>
       </section>
     </div>
   `;
@@ -274,11 +404,15 @@ function renderCustomerCards(customers) {
     return `<div class="crm-empty">No customers found.</div>`;
   }
 
-  return customers.map((customer) => `
+  return customers.map((customer) => {
+    const summary = getCustomerServiceSummary(customer.id);
+    return `
     <article class="crm-card">
       <h3>${escapeHtml(customer.name || "Unnamed Customer")}</h3>
       <p>${escapeHtml([customer.streetAddress, customer.city, customer.state, customer.zipCode].filter(Boolean).join(", "))}</p>
       <p>${escapeHtml(customer.phone || "No phone")} ${customer.leadSource ? `<span class="crm-badge">${escapeHtml(customer.leadSource)}</span>` : ""}</p>
+      <p><strong>Last service:</strong> ${summary.count ? `${escapeHtml(formatDisplayDate(summary.lastServiceDate))} - ${escapeHtml(summary.lastServiceType || "Service")}` : "No service visits saved yet."}</p>
+      <p><strong>Next service:</strong> ${escapeHtml(formatDisplayDate(summary.nextServiceDate))} <span class="crm-badge">${escapeHtml(serviceVisitLabel(summary.count))}</span></p>
       <div class="crm-actions">
         ${customer.phone ? `<a class="crm-btn secondary" href="tel:${escapeHtml(customer.phone.replace(/[^0-9+]/g, ""))}">Call</a>` : ""}
         ${customer.streetAddress ? `<a class="crm-btn secondary" target="_blank" rel="noopener" href="${mapsUrl(customer)}">Directions</a>` : ""}
@@ -287,24 +421,27 @@ function renderCustomerCards(customers) {
         <button class="crm-btn danger" type="button" data-archive-customer="${escapeHtml(customer.id)}">Archive</button>
       </div>
     </article>
-  `).join("");
+    `;
+  }).join("");
 }
 
 function renderJobCards(jobs, showCustomer) {
-  if (!jobs.length) {
+  const sortedJobs = sortJobsNewestFirst(jobs);
+  if (!sortedJobs.length) {
     return `<div class="crm-empty">Nothing here yet.</div>`;
   }
 
-  return jobs.map((job) => {
+  return sortedJobs.map((job) => {
     const customerName = showCustomer && job.customer ? `<p><strong>${escapeHtml(job.customer.name)}</strong></p>` : "";
     const due = job.daysUntilDue === undefined ? "" : `<span class="crm-badge">${job.daysUntilDue < 0 ? `${Math.abs(job.daysUntilDue)} days overdue` : `Due in ${job.daysUntilDue} days`}</span>`;
+    const serviceDate = jobServiceDate(job);
     return `
       <article class="crm-card">
         <h3>${escapeHtml(job.serviceType || "Service")}</h3>
         ${customerName}
-        <p>${escapeHtml([job.appointmentDate, job.appointmentTime].filter(Boolean).join(" at ") || "No appointment date")}</p>
+        <p><strong>Service date:</strong> ${escapeHtml(formatDisplayDate(serviceDate))}${job.appointmentTime ? ` at ${escapeHtml(job.appointmentTime)}` : ""}</p>
         <p>Status: ${escapeHtml(job.jobStatus || "Not set")} | Payment: ${escapeHtml(job.paymentStatus || "Not set")}</p>
-        <p>Next service: ${escapeHtml(job.nextServiceDate || "Not set")} ${due}</p>
+        <p>Next service: ${escapeHtml(formatDisplayDate(job.nextServiceDate))} ${due}</p>
         ${job.technicianNotes ? `<p>${escapeHtml(job.technicianNotes)}</p>` : ""}
       </article>
     `;
@@ -315,10 +452,16 @@ function bindCustomerButtons() {
   document.querySelectorAll("[data-view-customer]").forEach((button) => {
     button.addEventListener("click", async () => {
       const customer = state.customers.find((item) => item.id === button.dataset.viewCustomer);
+      if (!customer) {
+        showNotice("That customer was not found. Refreshing the customer list now.", "error");
+        await loadData();
+        switchScreen("customers");
+        return;
+      }
       state.selectedCustomer = customer;
       const jobData = await api(`/api/crm/jobs?customerId=${encodeURIComponent(customer.id)}`);
-      state.jobs = jobData.jobs;
-      document.querySelector('[data-screen="profile"]').click();
+      state.jobs = sortJobsNewestFirst(jobData.jobs);
+      switchScreen("profile");
       renderProfile();
     });
   });
@@ -335,8 +478,16 @@ function bindCustomerButtons() {
       if (!confirm("Archive this customer?")) {
         return;
       }
-      await api(`/api/crm/customers?id=${encodeURIComponent(button.dataset.archiveCustomer)}`, { method: "DELETE" });
-      await loadData();
+      try {
+        await api(`/api/crm/customers?id=${encodeURIComponent(button.dataset.archiveCustomer)}`, { method: "DELETE" });
+        await loadData();
+        switchScreen("customers");
+        showNotice("Customer archived.");
+      } catch (error) {
+        await loadData();
+        switchScreen("customers");
+        showNotice(error.message || "Customer could not be archived.", "error");
+      }
     });
   });
 }
@@ -382,20 +533,29 @@ function openCustomerModal(customer = null) {
   setModalLock();
   const form = modal.querySelector("#customer-form");
   focusFirstEditableField(form);
+  bindMobileInputFocus(form);
   modal.querySelector("[data-close-modal]").addEventListener("click", () => closeModal(modal));
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const status = modal.querySelector("#customer-status");
+    const submit = event.currentTarget.querySelector("button[type='submit']");
     const formData = Object.fromEntries(new FormData(event.currentTarget));
     const method = customer ? "PUT" : "POST";
     status.textContent = "Saving...";
+    status.classList.remove("error");
+    submit.disabled = true;
     try {
       await api("/api/crm/customers", { method, body: JSON.stringify(formData) });
       closeModal(modal);
       await loadData();
+      switchScreen("customers");
+      showNotice(customer ? "Customer updated and saved to Google Sheets." : "Customer saved to Google Sheets.");
     } catch (error) {
       status.textContent = error.message;
       status.classList.add("error");
+      showNotice(error.message || "Customer could not be saved.", "error");
+    } finally {
+      submit.disabled = false;
     }
   });
 }
@@ -408,7 +568,7 @@ function openJobModal(customer) {
   modal.setAttribute("aria-modal", "true");
   modal.innerHTML = `
     <form class="crm-modal-card" id="job-form">
-      <h2>Add Service for ${escapeHtml(customer.name)}</h2>
+      <h2>Add Service Visit for ${escapeHtml(customer.name)}</h2>
       <input type="hidden" name="customerId" value="${escapeHtml(customer.id)}">
       <div class="crm-form-grid">
         ${field("Appointment Date", "appointmentDate", "", false, "date")}
@@ -425,7 +585,7 @@ function openJobModal(customer) {
         ${textareaField("Technician Notes", "technicianNotes", "")}
       </div>
       <div class="crm-actions">
-        <button class="crm-btn" type="submit">Save Service</button>
+        <button class="crm-btn" type="submit">Save Service Visit</button>
         <button class="crm-btn secondary" type="button" data-close-modal>Cancel</button>
       </div>
       <p class="crm-status" id="job-status"></p>
@@ -435,21 +595,34 @@ function openJobModal(customer) {
   setModalLock();
   const form = modal.querySelector("#job-form");
   focusFirstEditableField(form);
+  bindMobileInputFocus(form);
   modal.querySelector("[data-close-modal]").addEventListener("click", () => closeModal(modal));
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const status = modal.querySelector("#job-status");
+    const submit = event.currentTarget.querySelector("button[type='submit']");
     status.textContent = "Saving service...";
+    status.classList.remove("error");
+    submit.disabled = true;
     try {
       await api("/api/crm/jobs", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget))) });
       closeModal(modal);
-      const jobData = await api(`/api/crm/jobs?customerId=${encodeURIComponent(customer.id)}`);
-      state.jobs = jobData.jobs;
       await loadData(false);
+      state.selectedCustomer = state.customers.find((item) => item.id === customer.id) || customer;
+      const jobData = await api(`/api/crm/jobs?customerId=${encodeURIComponent(customer.id)}`);
+      state.jobs = sortJobsNewestFirst(jobData.jobs);
+      renderDashboard();
+      renderCustomers();
+      renderDue();
       renderProfile();
+      switchScreen("profile");
+      showNotice("Service saved to Google Sheets.");
     } catch (error) {
       status.textContent = error.message;
       status.classList.add("error");
+      showNotice(error.message || "Service could not be saved.", "error");
+    } finally {
+      submit.disabled = false;
     }
   });
 }
@@ -501,12 +674,18 @@ function selectField(label, name, value, options) {
 }
 
 async function loadData(renderAll = true) {
-  const [dashboardData, customerData] = await Promise.all([
+  const [dashboardData, customerData, jobData] = await Promise.all([
     api("/api/crm/dashboard"),
     api("/api/crm/customers"),
+    api("/api/crm/jobs"),
   ]);
   state.dashboard = dashboardData;
   state.customers = customerData.customers;
+  state.allJobs = sortJobsNewestFirst(jobData.jobs || []);
+  if (state.selectedCustomer) {
+    state.selectedCustomer = state.customers.find((customer) => customer.id === state.selectedCustomer.id) || state.selectedCustomer;
+    state.jobs = jobsForCustomer(state.selectedCustomer.id);
+  }
   if (renderAll) {
     renderDashboard();
     renderCustomers();
