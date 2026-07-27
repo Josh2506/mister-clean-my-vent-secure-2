@@ -197,6 +197,27 @@ a {
   filter: drop-shadow(0 18px 26px rgba(0, 0, 0, 0.36));
 }
 
+.local-trust {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 18px;
+  padding: 9px 14px;
+  color: var(--cream);
+  font-size: 0.86rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+  border: 1px solid rgba(255, 247, 201, 0.34);
+  border-radius: 999px;
+  background: rgba(19, 33, 13, 0.72);
+}
+
+.local-trust b {
+  color: var(--gold);
+}
+
 .eyebrow {
   margin: 0 0 13px;
   color: var(--gold);
