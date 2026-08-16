@@ -720,6 +720,18 @@ p {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.house-wash-gallery {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.summer-photo-grid.house-wash-gallery img {
+  height: 190px;
+}
+
+.house-wash-gallery .composite-photo img {
+  object-fit: contain;
+}
+
 .summer-photo-grid figure {
   margin: 0;
 }
@@ -739,6 +751,67 @@ p {
   color: var(--cream);
   font-size: 0.88rem;
   font-weight: 900;
+}
+
+.gutter-guard-project {
+  display: block;
+}
+
+.gutter-project-copy {
+  max-width: 820px;
+  margin-bottom: 22px;
+}
+
+.gutter-project-copy p + p {
+  margin-top: 12px;
+}
+
+.gutter-project-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.gutter-project-group {
+  overflow: hidden;
+  margin: 0;
+  border: 1px solid rgba(255, 247, 201, 0.2);
+  border-radius: 8px;
+  background: rgba(9, 20, 7, 0.28);
+  box-shadow: 0 12px 26px rgba(9, 20, 7, 0.18);
+}
+
+.gutter-project-group img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.photo-step-labels {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px 12px;
+  color: var(--cream);
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1.25;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.photo-step-labels.two-labels {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.photo-step-labels.three-labels {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.photo-step-labels span {
+  padding: 7px 5px;
+  border-radius: 6px;
+  background: rgba(255, 247, 201, 0.08);
 }
 
 .before-after-gallery {
@@ -1355,6 +1428,10 @@ textarea:focus {
   .surface-results {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .gutter-project-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 920px) {
@@ -1494,6 +1571,7 @@ textarea:focus {
 
   .summer-photo-grid,
   .summer-photo-grid.two-up,
+  .house-wash-gallery,
   .before-after-gallery,
   .surface-results {
     grid-template-columns: 1fr;
