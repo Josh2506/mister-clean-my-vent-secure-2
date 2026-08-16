@@ -787,33 +787,6 @@ p {
   height: auto;
 }
 
-.photo-step-labels {
-  display: grid;
-  gap: 8px;
-  margin: 0;
-  padding: 10px 12px 12px;
-  color: var(--cream);
-  font-size: 0.78rem;
-  font-weight: 900;
-  line-height: 1.25;
-  text-align: center;
-  text-transform: uppercase;
-}
-
-.photo-step-labels.two-labels {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.photo-step-labels.three-labels {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.photo-step-labels span {
-  padding: 7px 5px;
-  border-radius: 6px;
-  background: rgba(255, 247, 201, 0.08);
-}
-
 .before-after-gallery {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
