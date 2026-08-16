@@ -720,18 +720,6 @@ p {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.house-wash-gallery {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.summer-photo-grid.house-wash-gallery img {
-  height: 190px;
-}
-
-.house-wash-gallery .composite-photo img {
-  object-fit: contain;
-}
-
 .summer-photo-grid figure {
   margin: 0;
 }
@@ -1544,7 +1532,6 @@ textarea:focus {
 
   .summer-photo-grid,
   .summer-photo-grid.two-up,
-  .house-wash-gallery,
   .before-after-gallery,
   .surface-results {
     grid-template-columns: 1fr;
