@@ -12,9 +12,14 @@ const auth = require("../netlify/functions/_shared/auth.js");
 const customers = require("../netlify/functions/crm-customers.js");
 const dashboard = require("../netlify/functions/crm-dashboard.js");
 const jobs = require("../netlify/functions/crm-jobs.js");
+const expensesApi = require("../netlify/functions/crm-expenses.js");
+const jobAssetsApi = require("../netlify/functions/crm-job-assets.js");
+const fileApi = require("../netlify/functions/crm-file.js");
 const login = require("../netlify/functions/crm-login.js");
 const records = require("../netlify/functions/_shared/crm-records.js");
 const googleSheets = require("../netlify/functions/_shared/google-sheets.js");
+const googleDrive = require("../netlify/functions/_shared/google-drive.js");
+const schema = require("../crm/schema.json");
 
 const passwordHash = auth.createPasswordHash("correct-horse-password");
 process.env.CRM_ADMIN_PASSWORD_HASH = passwordHash;
@@ -30,6 +35,9 @@ const unauthEvent = { httpMethod: "GET", headers: {} };
 assert.equal((await customers.handler(unauthEvent)).statusCode, 401, "customers API must reject logged-out visitors");
 assert.equal((await dashboard.handler(unauthEvent)).statusCode, 401, "dashboard API must reject logged-out visitors");
 assert.equal((await jobs.handler(unauthEvent)).statusCode, 401, "jobs API must reject logged-out visitors");
+assert.equal((await expensesApi.handler(unauthEvent)).statusCode, 401, "expenses API must reject logged-out visitors");
+assert.equal((await jobAssetsApi.handler(unauthEvent)).statusCode, 401, "job attachment API must reject logged-out visitors");
+assert.equal((await fileApi.handler(unauthEvent)).statusCode, 401, "Drive file proxy must reject logged-out visitors");
 
 const badLogin = await login.handler({
   httpMethod: "POST",
@@ -121,6 +129,15 @@ assert.equal(alternateClient.phone, "7326260685", "alternate phone header should
 assert.equal(alternateClient.streetAddress, "123 Main St", "alternate address header should be read");
 assert.equal(alternateClient.notes, "Needs annual dryer vent cleaning", "alternate notes header should be read");
 
+const liveLeadHeaders = ["Lead ID", "First Name", "Last Name", "Phone Number", "Email", "Address", "City", "State", "Zip Code ", "Lead Source", "Customer ID", "Notes"];
+const liveLead = googleSheets.valuesToRecords([liveLeadHeaders, ["lead_live", "Sam", "Owner", "7325550100", "sam@example.com", "1 Main St", "Somerville", "NJ", "08876", "Google", "cus_live", "Call back"]], "Leads")[0];
+assert.equal(liveLead.Phone, "7325550100", "the live Leads Phone Number header should map to Phone");
+assert.equal(liveLead["Converted Customer ID"], "cus_live", "the live Leads Customer ID header should map to Converted Customer ID");
+
+const liveReminderHeaders = ["Reminder ID", "Customer ID", "Job ID", "Reminder Type", "Due Date", "Reminder Status", "Contact Method", "Date Contacted ", "Customer Response", "Follow Up", "Notes"];
+const liveReminder = googleSheets.valuesToRecords([liveReminderHeaders, ["rem_live", "cus_live", "job_live", "Annual", "2026-10-01", "Open", "Text", "", "", "2026-10-10", ""]], "Reminders")[0];
+assert.equal(liveReminder["Follow-Up Date"], "2026-10-10", "the live Reminders Follow Up header should map without rewriting it");
+
 const job = records.jobFromBody({
   customerId: customer["Customer ID"],
   serviceType: "Dryer Vent Cleaning",
@@ -132,22 +149,56 @@ assert.equal(records.hasJobData({ "Job ID": "job_blank_only", "Customer ID": cus
 assert.equal(records.hasJobData(job), true, "real job sheet rows should be included");
 assert.equal(records.dateDiffDays("2026-08-24", "2026-07-24"), 31);
 
-const editedJob = records.jobFromBody({
-  jobId: job["Job ID"],
+const expense = records.expenseFromBody({
+  date: "2026-08-26",
+  vendor: "Home Depot",
+  category: "Parts & Materials",
+  totalAmount: "187.42",
   customerId: customer["Customer ID"],
-  serviceType: "Gutter Cleaning",
-  jobStatus: "Completed",
-  finalPrice: "275",
-  dateCompleted: "2026-07-24",
-  nextServiceDate: "",
-  technicianNotes: "Updated from the customer service history.",
+  jobId: job["Job ID"],
+});
+assert.match(expense["Expense ID"], /^exp_/, "expenses should receive stable prefixed IDs");
+assert.equal(records.expenseToClient(expense).jobId, job["Job ID"], "expense should retain its Job relationship");
+assert.equal(records.expenseToClient(expense).customerId, customer["Customer ID"], "expense should retain its Customer relationship");
+assert.throws(() => records.expenseFromBody({ vendor: "Wawa", totalAmount: "not-a-number" }), /valid total/i);
+
+const signedJob = records.jobFromBody({
+  customerId: customer["Customer ID"],
+  signedWorkOrderFileId: "drive_file_123",
+  signedWorkOrderUrl: "https://drive.google.com/file/d/drive_file_123/view",
+  signedWorkOrderFileName: "2026-08-26_Smith_Signed-Work-Order.jpg",
+  signedWorkOrderUploadedAt: "2026-08-26T12:00:00.000Z",
 }, job);
-assert.equal(editedJob["Job ID"], job["Job ID"], "editing a service should preserve its job ID");
-assert.equal(editedJob["Customer ID"], customer["Customer ID"], "editing a service should preserve its customer");
-assert.equal(editedJob["Service Type"], "Gutter Cleaning", "editing a service should update its service type");
-assert.equal(editedJob["Final Price"], "275", "editing a service should update its final price");
-assert.equal(editedJob["Date Completed"], "2026-07-24", "editing a service should update its completion date");
-assert.equal(editedJob["Next Service Date"], "", "editing a service should allow an old date to be cleared");
+assert.equal(records.jobToClient(signedJob).signedWorkOrderFileId, "drive_file_123", "signed Work Order metadata should extend the existing Job record");
+const clearedJob = records.jobFromBody({ customerId: customer["Customer ID"], jobId: signedJob["Job ID"], finalPrice: "", signedWorkOrderFileId: "" }, signedJob);
+assert.equal(clearedJob["Final Price"], "", "editing a Job should allow optional values to be cleared");
+assert.equal(clearedJob["Signed Work Order File ID"], "", "signed Work Order metadata should be removable without changing the Job ID");
+
+assert.ok(schema.tabs.Expenses.includes("Google Drive File ID"), "Expenses tab should store Drive metadata, not file bytes");
+assert.ok(schema.tabs.Jobs.includes("Signed Work Order File ID"), "Jobs should be extended instead of adding a duplicate Work Orders table");
+assert.ok(!schema.tabs.Expenses.some((header) => /base64|binary/i.test(header)), "Sheets must not contain raw file columns");
+assert.equal(googleDrive.expenseFileName({ date: "2026-08-26", vendor: "Home Depot", total: "187.42", customerName: "Smith", originalName: "receipt.JPG" }), "2026-08-26_Smith_Home-Depot_187.42.jpg");
+assert.equal(googleDrive.signedWorkOrderFileName({ date: "2026-08-26", customerName: "Smith", originalName: "scan.pdf" }), "2026-08-26_Smith_Signed-Work-Order.pdf");
+
+process.env.GOOGLE_DRIVE_CRM_FOLDER_ID = "root_folder";
+process.env.GOOGLE_DRIVE_WEB_APP_URL = "https://script.google.test/exec";
+process.env.GOOGLE_DRIVE_WEB_APP_SECRET = "test-bridge-secret";
+const originalFetch = globalThis.fetch;
+const bridgeCalls = [];
+globalThis.fetch = async (_url, options) => {
+  const request = JSON.parse(options.body);
+  bridgeCalls.push(request);
+  return new Response(JSON.stringify({ ok: true, folder: { id: `folder_${bridgeCalls.length}`, name: request.name, url: `https://drive.google.test/folder_${bridgeCalls.length}` } }), { status: 200 });
+};
+const nestedFolder = await googleDrive.folderPath(["Receipts", "2026"]);
+assert.equal(nestedFolder.id, "folder_2", "Drive bridge folder creation should walk the requested hierarchy");
+assert.equal(bridgeCalls[0].parentId, "root_folder", "Drive bridge should start from the configured existing folder");
+assert.equal(bridgeCalls[1].parentId, "folder_1", "Drive bridge should reuse the prior folder result without creating a second root");
+assert.equal(bridgeCalls[0].secret, "test-bridge-secret", "Drive bridge requests should be authenticated");
+globalThis.fetch = originalFetch;
+
+const photoRows = [schema.tabs["Job Photos"], ["photo_123", job["Job ID"], customer["Customer ID"], "Before", "", "before.jpg", "image/jpeg", "file_123", "https://drive.google.com/file/d/file_123/view", "2026-08-26T12:00:00.000Z", "FALSE"]];
+assert.equal(googleSheets.valuesToRecords(photoRows, "Job Photos")[0]["Photo ID"], "photo_123", "tabs with spaces should map attachment records correctly");
 
 const missingCustomerIdDelete = await customers.handler({
   httpMethod: "DELETE",

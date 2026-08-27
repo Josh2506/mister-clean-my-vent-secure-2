@@ -190,9 +190,7 @@ textarea {
 }
 
 .crm-panel-heading h2,
-.crm-panel-heading p {
-  margin: 0;
-}
+.crm-panel-heading p { margin: 0; }
 
 .crm-panel-heading p {
   margin-top: 6px;
@@ -200,19 +198,9 @@ textarea {
   line-height: 1.4;
 }
 
-.crm-month-picker {
-  width: min(220px, 100%);
-  margin: 0;
-}
-
-.crm-monthly-stats {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-bottom: 18px;
-}
-
-.crm-subheading {
-  margin: 0 0 10px;
-}
+.crm-month-picker { width: min(220px, 100%); margin: 0; }
+.crm-monthly-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 18px; }
+.crm-subheading { margin: 0 0 10px; }
 
 .crm-stats {
   display: grid;
@@ -375,6 +363,38 @@ textarea {
   font-weight: 700;
 }
 
+.crm-badge.success { background: #e6f4df; color: var(--crm-green); }
+.crm-badge.muted { background: #eef0ec; color: var(--crm-muted); }
+.crm-money { color: var(--crm-green); font-size: 1.25rem; white-space: nowrap; }
+.crm-expense-card { display: grid; grid-template-columns: 1fr auto; gap: 10px 16px; align-items: start; }
+.crm-expense-card .crm-actions { grid-column: 1 / -1; }
+.crm-receipt-thumb { grid-column: 1 / -1; display: flex; width: 100%; align-items: center; gap: 12px; padding: 8px; border: 1px solid var(--crm-line); border-radius: var(--crm-radius); background: #fbfff7; color: var(--crm-green); font-weight: 700; text-align: left; cursor: pointer; }
+.crm-receipt-thumb img { width: 72px; height: 72px; border-radius: 6px; object-fit: cover; background: #eef0ec; }
+.crm-filter-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 12px; }
+.crm-expense-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 14px 0; }
+.crm-table-wrap { overflow-x: auto; }
+.crm-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+.crm-table th, .crm-table td { padding: 12px 10px; border-bottom: 1px solid var(--crm-line); text-align: left; vertical-align: top; }
+.crm-table-thumb { display: block; width: 54px; height: 54px; border-radius: 6px; object-fit: cover; background: #eef0ec; }
+.crm-link-button { padding: 0; border: 0; background: transparent; color: var(--crm-green); font-weight: 700; text-decoration: underline; cursor: pointer; }
+.danger-text { color: var(--crm-danger); }
+.crm-expense-mobile { display: none; }
+.crm-upload-button { display: grid; min-height: 58px; place-items: center; padding: 14px 16px; border: 2px dashed var(--crm-green-2); border-radius: var(--crm-radius); background: #edf7e6; color: var(--crm-green); font-weight: 700; text-align: center; cursor: pointer; }
+.crm-file-input { position: absolute; width: 1px !important; height: 1px !important; min-height: 1px !important; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.crm-local-preview { display: block; width: min(100%, 520px); max-height: 48vh; margin-top: 10px; border: 1px solid var(--crm-line); border-radius: var(--crm-radius); object-fit: contain; background: #fff; }
+.crm-preview-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
+.crm-preview-header h2, .crm-preview-header p { margin: 0 0 6px; }
+.crm-preview-card, .crm-job-detail { width: min(980px, 100%); }
+.crm-file-preview { width: 100%; height: min(68vh, 760px); margin-bottom: 14px; border: 1px solid var(--crm-line); border-radius: var(--crm-radius); background: #fff; }
+.crm-subpanel { margin-top: 16px; padding: 16px; border: 1px solid var(--crm-line); border-radius: var(--crm-radius); background: #fff; }
+.crm-job-costs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 18px; margin: 12px 0; }
+.crm-job-costs span { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--crm-line); }
+.crm-gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.crm-gallery-item { overflow: hidden; border: 1px solid var(--crm-line); border-radius: var(--crm-radius); background: #fff; }
+.crm-gallery-item > button:first-child { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: var(--crm-ink); cursor: pointer; }
+.crm-gallery-item img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #eef0ec; }
+.crm-gallery-item span, .crm-gallery-item > .crm-link-button { display: block; padding: 10px; }
+
 .crm-empty {
   padding: 14px;
   border: 1px dashed #c6d3bd;
@@ -390,7 +410,7 @@ textarea {
   left: 0;
   z-index: 8;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   border-top: 1px solid var(--crm-line);
   background: #fffef4;
 }
@@ -479,6 +499,11 @@ textarea {
   .crm-brand strong {
     font-size: 0.95rem;
   }
+
+  .crm-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .crm-expense-desktop { display: none; }
+  .crm-expense-mobile { display: block; }
+  .crm-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 640px) {
@@ -512,19 +537,17 @@ textarea {
     min-height: 52px;
   }
 
-  .crm-panel-heading {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
+  .crm-panel-heading { align-items: stretch; flex-direction: column; }
   .crm-panel-heading .crm-btn,
-  .crm-month-picker {
-    width: 100%;
-  }
+  .crm-month-picker { width: 100%; }
+  .crm-monthly-stats { grid-template-columns: 1fr; }
 
-  .crm-monthly-stats {
-    grid-template-columns: 1fr;
-  }
+  .crm-bottom-nav button { min-height: 66px; padding: 5px 3px; font-size: 0.78rem; }
+  .crm-filter-grid, .crm-job-costs { grid-template-columns: 1fr; }
+  .crm-expense-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .crm-gallery { grid-template-columns: 1fr; }
+  .crm-preview-header { align-items: stretch; flex-direction: column; }
+  .crm-file-preview { height: 64vh; }
 }
 
 @media (min-width: 821px) {
@@ -541,7 +564,7 @@ textarea {
     top: 75px;
     width: min(1180px, calc(100% - 28px));
     margin: 0 auto;
-    grid-template-columns: repeat(4, max-content);
+    grid-template-columns: repeat(5, max-content);
     justify-content: start;
     border: 1px solid var(--crm-line);
     border-radius: var(--crm-radius);

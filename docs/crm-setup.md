@@ -62,7 +62,9 @@ Add these in Netlify under Site configuration, then Environment variables:
 - `GOOGLE_SHEETS_SPREADSHEET_ID`
 - `GOOGLE_SERVICE_ACCOUNT_EMAIL`
 - `GOOGLE_PRIVATE_KEY`
-- `GOOGLE_DRIVE_PHOTOS_FOLDER_ID`
+- `GOOGLE_DRIVE_CRM_FOLDER_ID`
+- `GOOGLE_DRIVE_WEB_APP_URL`
+- `GOOGLE_DRIVE_WEB_APP_SECRET`
 - `CRM_ADMIN_EMAILS`
 - `CRM_ADMIN_PASSWORD_HASH`
 - `CRM_SESSION_SECRET`
@@ -70,6 +72,8 @@ Add these in Netlify under Site configuration, then Environment variables:
 - `CRM_RATE_LIMIT_MAX_REQUESTS`
 
 Use `.env.example` only as a template. Do not paste real keys into GitHub.
+
+Drive uploads use `tools/google-drive-upload-bridge.gs`, deployed as a Google Apps Script web app that executes as the Drive owner. Set the same strong secret in the script property `CRM_DRIVE_BRIDGE_SECRET` and Netlify's `GOOGLE_DRIVE_WEB_APP_SECRET`. The script is restricted to the configured CRM root folder and reuses matching folders before creating anything.
 
 To create `CRM_ADMIN_PASSWORD_HASH`, run:
 
