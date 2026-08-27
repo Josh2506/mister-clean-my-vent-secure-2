@@ -38,6 +38,12 @@
       "After Photo Folder URL",
       "Date Completed",
       "Next Service Date",
+      "Google Drive Folder ID",
+      "Google Drive Folder URL",
+      "Signed Work Order File ID",
+      "Signed Work Order URL",
+      "Signed Work Order File Name",
+      "Signed Work Order Uploaded At",
       "Created At",
       "Updated At",
       "Archived"
@@ -86,6 +92,53 @@
       "Default Reminder Months",
       "Active",
       "Notes"
+    ],
+    "Expenses": [
+      "Expense ID",
+      "Date",
+      "Vendor",
+      "Category",
+      "Description",
+      "Subtotal",
+      "Sales Tax",
+      "Total Amount",
+      "Payment Method",
+      "Notes",
+      "Customer ID",
+      "Job ID",
+      "Receipt File Name",
+      "Receipt MIME Type",
+      "Google Drive File ID",
+      "Google Drive File URL",
+      "Created At",
+      "Updated At",
+      "Archived"
+    ],
+    "Job Photos": [
+      "Photo ID",
+      "Job ID",
+      "Customer ID",
+      "Category",
+      "Notes",
+      "File Name",
+      "MIME Type",
+      "Google Drive File ID",
+      "Google Drive File URL",
+      "Uploaded At",
+      "Archived"
+    ],
+    "Job Documents": [
+      "Document ID",
+      "Job ID",
+      "Customer ID",
+      "Document Type",
+      "File Name",
+      "MIME Type",
+      "Notes",
+      "Google Drive File ID",
+      "Google Drive File URL",
+      "Uploaded At",
+      "Archived"
     ]
   },
   "starterServices": [
@@ -99,4 +152,3 @@
     ["svc_other", "Other", "", "", "TRUE", ""]
   ]
 }
-

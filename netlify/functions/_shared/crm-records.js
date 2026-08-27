@@ -43,6 +43,12 @@ const recordFieldAliases = {
   "After Photo Folder URL": ["After Photo Folder URL", "After Photos"],
   "Date Completed": ["Date Completed", "Completed Date"],
   "Next Service Date": ["Next Service Date", "Next Recommended Service Date", "Reminder Date"],
+  "Google Drive Folder ID": ["Google Drive Folder ID", "Drive Folder ID"],
+  "Google Drive Folder URL": ["Google Drive Folder URL", "Drive Folder URL"],
+  "Signed Work Order File ID": ["Signed Work Order File ID"],
+  "Signed Work Order URL": ["Signed Work Order URL"],
+  "Signed Work Order File Name": ["Signed Work Order File Name"],
+  "Signed Work Order Uploaded At": ["Signed Work Order Uploaded At"],
   "Created At": ["Created At"],
   "Updated At": ["Updated At"],
   Archived: ["Archived", "Archive"],
@@ -161,12 +167,8 @@ function jobFromBody(body, existing = {}) {
   const timestamp = nowIso();
   const customerId = clean(body.customerId || body["Customer ID"] || existing["Customer ID"]);
   const bodyField = (camelName, sheetName) => {
-    if (Object.prototype.hasOwnProperty.call(body, camelName)) {
-      return clean(body[camelName]);
-    }
-    if (Object.prototype.hasOwnProperty.call(body, sheetName)) {
-      return clean(body[sheetName]);
-    }
+    if (Object.prototype.hasOwnProperty.call(body, camelName)) return clean(body[camelName]);
+    if (Object.prototype.hasOwnProperty.call(body, sheetName)) return clean(body[sheetName]);
     return clean(existing[sheetName]);
   };
   if (!customerId) {
@@ -192,6 +194,12 @@ function jobFromBody(body, existing = {}) {
     "After Photo Folder URL": bodyField("afterPhotoFolderUrl", "After Photo Folder URL"),
     "Date Completed": bodyField("dateCompleted", "Date Completed"),
     "Next Service Date": bodyField("nextServiceDate", "Next Service Date"),
+    "Google Drive Folder ID": bodyField("googleDriveFolderId", "Google Drive Folder ID"),
+    "Google Drive Folder URL": bodyField("googleDriveFolderUrl", "Google Drive Folder URL"),
+    "Signed Work Order File ID": bodyField("signedWorkOrderFileId", "Signed Work Order File ID"),
+    "Signed Work Order URL": bodyField("signedWorkOrderUrl", "Signed Work Order URL"),
+    "Signed Work Order File Name": bodyField("signedWorkOrderFileName", "Signed Work Order File Name"),
+    "Signed Work Order Uploaded At": bodyField("signedWorkOrderUploadedAt", "Signed Work Order Uploaded At"),
     "Created At": existing["Created At"] || timestamp,
     "Updated At": timestamp,
     Archived: clean(body.archived || body.Archived || existing.Archived || "FALSE"),
@@ -216,6 +224,12 @@ function jobToClient(record) {
     afterPhotoFolderUrl: readRecordValue(record, "After Photo Folder URL"),
     dateCompleted: readRecordValue(record, "Date Completed"),
     nextServiceDate: readRecordValue(record, "Next Service Date"),
+    googleDriveFolderId: readRecordValue(record, "Google Drive Folder ID"),
+    googleDriveFolderUrl: readRecordValue(record, "Google Drive Folder URL"),
+    signedWorkOrderFileId: readRecordValue(record, "Signed Work Order File ID"),
+    signedWorkOrderUrl: readRecordValue(record, "Signed Work Order URL"),
+    signedWorkOrderFileName: readRecordValue(record, "Signed Work Order File Name"),
+    signedWorkOrderUploadedAt: readRecordValue(record, "Signed Work Order Uploaded At"),
     createdAt: readRecordValue(record, "Created At"),
     updatedAt: readRecordValue(record, "Updated At"),
   };
@@ -233,11 +247,97 @@ function dateDiffDays(dateString, baseDate = todayDate()) {
   return Math.round((target.getTime() - base.getTime()) / 86400000);
 }
 
+function expenseFromBody(body, existing = {}) {
+  const timestamp = nowIso();
+  const bodyField = (camelName, sheetName) => {
+    if (Object.prototype.hasOwnProperty.call(body, camelName)) return clean(body[camelName]);
+    if (Object.prototype.hasOwnProperty.call(body, sheetName)) return clean(body[sheetName]);
+    return clean(existing[sheetName]);
+  };
+  const vendor = bodyField("vendor", "Vendor");
+  const total = clean(body.totalAmount ?? body["Total Amount"] ?? existing["Total Amount"]);
+  if (!vendor) {
+    const error = new Error("Vendor / Store is required.");
+    error.statusCode = 400;
+    throw error;
+  }
+  if (total === "" || Number.isNaN(Number(total)) || Number(total) < 0) {
+    const error = new Error("Enter a valid total amount.");
+    error.statusCode = 400;
+    throw error;
+  }
+  return {
+    "Expense ID": existing["Expense ID"] || body.expenseId || id("exp"),
+    Date: bodyField("date", "Date") || todayDate(),
+    Vendor: vendor,
+    Category: bodyField("category", "Category") || "Other Business Expense",
+    Description: bodyField("description", "Description"),
+    Subtotal: clean(body.subtotal ?? body.Subtotal ?? existing.Subtotal),
+    "Sales Tax": clean(body.salesTax ?? body["Sales Tax"] ?? existing["Sales Tax"]),
+    "Total Amount": total,
+    "Payment Method": bodyField("paymentMethod", "Payment Method"),
+    Notes: bodyField("notes", "Notes"),
+    "Customer ID": bodyField("customerId", "Customer ID"),
+    "Job ID": bodyField("jobId", "Job ID"),
+    "Receipt File Name": bodyField("receiptFileName", "Receipt File Name"),
+    "Receipt MIME Type": bodyField("receiptMimeType", "Receipt MIME Type"),
+    "Google Drive File ID": bodyField("googleDriveFileId", "Google Drive File ID"),
+    "Google Drive File URL": bodyField("googleDriveFileUrl", "Google Drive File URL"),
+    "Created At": existing["Created At"] || timestamp,
+    "Updated At": timestamp,
+    Archived: clean(body.archived || body.Archived || existing.Archived || "FALSE"),
+  };
+}
+
+function expenseToClient(record) {
+  return {
+    id: readRecordValue(record, "Expense ID"),
+    date: readRecordValue(record, "Date"),
+    vendor: readRecordValue(record, "Vendor"),
+    category: readRecordValue(record, "Category"),
+    description: readRecordValue(record, "Description"),
+    subtotal: readRecordValue(record, "Subtotal"),
+    salesTax: readRecordValue(record, "Sales Tax"),
+    totalAmount: readRecordValue(record, "Total Amount"),
+    paymentMethod: readRecordValue(record, "Payment Method"),
+    notes: readRecordValue(record, "Notes"),
+    customerId: readRecordValue(record, "Customer ID"),
+    jobId: readRecordValue(record, "Job ID"),
+    receiptFileName: readRecordValue(record, "Receipt File Name"),
+    receiptMimeType: readRecordValue(record, "Receipt MIME Type"),
+    googleDriveFileId: readRecordValue(record, "Google Drive File ID"),
+    googleDriveFileUrl: readRecordValue(record, "Google Drive File URL"),
+    createdAt: readRecordValue(record, "Created At"),
+    updatedAt: readRecordValue(record, "Updated At"),
+  };
+}
+
+function photoToClient(record) {
+  return {
+    id: readRecordValue(record, "Photo ID"), jobId: readRecordValue(record, "Job ID"), customerId: readRecordValue(record, "Customer ID"),
+    category: readRecordValue(record, "Category"), notes: readRecordValue(record, "Notes"), fileName: readRecordValue(record, "File Name"),
+    mimeType: readRecordValue(record, "MIME Type"), googleDriveFileId: readRecordValue(record, "Google Drive File ID"),
+    googleDriveFileUrl: readRecordValue(record, "Google Drive File URL"), uploadedAt: readRecordValue(record, "Uploaded At"),
+  };
+}
+
+function documentToClient(record) {
+  return {
+    id: readRecordValue(record, "Document ID"), jobId: readRecordValue(record, "Job ID"), customerId: readRecordValue(record, "Customer ID"),
+    documentType: readRecordValue(record, "Document Type"), fileName: readRecordValue(record, "File Name"), mimeType: readRecordValue(record, "MIME Type"),
+    notes: readRecordValue(record, "Notes"), googleDriveFileId: readRecordValue(record, "Google Drive File ID"),
+    googleDriveFileUrl: readRecordValue(record, "Google Drive File URL"), uploadedAt: readRecordValue(record, "Uploaded At"),
+  };
+}
+
 module.exports = {
   clean,
   customerFromBody,
   customerToClient,
   dateDiffDays,
+  documentToClient,
+  expenseFromBody,
+  expenseToClient,
   hasCustomerData,
   hasJobData,
   id,
@@ -245,6 +345,7 @@ module.exports = {
   jobFromBody,
   jobToClient,
   nowIso,
+  photoToClient,
   readRecordValue,
   todayDate,
 };
