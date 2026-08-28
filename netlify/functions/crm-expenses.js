@@ -1,5 +1,5 @@
 const { requireSession } = require("./_shared/auth");
-const { appendRecord, findRecordById, getRows, updateRecord } = require("./_shared/google-sheets");
+const { appendRecord, findRecordById, getRowsBatch, updateRecord } = require("./_shared/google-sheets");
 const { expenseFileName, folderPath, trashFile, uploadFile } = require("./_shared/google-drive");
 const { customerToClient, expenseFromBody, expenseToClient, hasCustomerData, hasJobData, isArchived, jobToClient } = require("./_shared/crm-records");
 const { json, readJson } = require("./_shared/http");
@@ -23,7 +23,9 @@ function totals(expenses) {
 }
 
 async function relationships(body) {
-  const [customerRows, jobRows] = await Promise.all([getRows("Customers"), getRows("Jobs")]);
+  const rows = await getRowsBatch(["Customers", "Jobs"]);
+  const customerRows = rows.Customers;
+  const jobRows = rows.Jobs;
   const customers = customerRows.filter(hasCustomerData).filter((row) => !isArchived(row)).map(customerToClient);
   const jobs = jobRows.filter(hasJobData).filter((row) => !isArchived(row)).map(jobToClient);
   const job = body.jobId ? jobs.find((item) => item.id === body.jobId) : null;
@@ -61,7 +63,10 @@ exports.handler = async function handler(event) {
   try {
     if (event.httpMethod === "GET") {
       const query = event.queryStringParameters || {};
-      const [expenseRows, customerRows, jobRows] = await Promise.all([getRows("Expenses"), getRows("Customers"), getRows("Jobs")]);
+      const rows = await getRowsBatch(["Expenses", "Customers", "Jobs"]);
+      const expenseRows = rows.Expenses;
+      const customerRows = rows.Customers;
+      const jobRows = rows.Jobs;
       const customers = customerRows.filter(hasCustomerData).filter((row) => !isArchived(row)).map(customerToClient);
       const jobs = jobRows.filter(hasJobData).filter((row) => !isArchived(row)).map(jobToClient);
       const customerById = new Map(customers.map((item) => [item.id, item]));

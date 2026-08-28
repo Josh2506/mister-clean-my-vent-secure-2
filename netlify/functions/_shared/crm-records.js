@@ -116,6 +116,7 @@ function customerFromBody(body, existing = {}) {
   }
 
   return {
+    ...existing,
     "Customer ID": existing["Customer ID"] || body.customerId || id("cus"),
     "First Name": firstName,
     "Last Name": lastName,
@@ -178,6 +179,7 @@ function jobFromBody(body, existing = {}) {
   }
 
   return {
+    ...existing,
     "Job ID": existing["Job ID"] || body.jobId || id("job"),
     "Customer ID": customerId,
     "Appointment Date": bodyField("appointmentDate", "Appointment Date"),
@@ -267,6 +269,7 @@ function expenseFromBody(body, existing = {}) {
     throw error;
   }
   return {
+    ...existing,
     "Expense ID": existing["Expense ID"] || body.expenseId || id("exp"),
     Date: bodyField("date", "Date") || todayDate(),
     Vendor: vendor,

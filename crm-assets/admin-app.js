@@ -1,4 +1,5 @@
 const app = document.querySelector("#crm-app");
+const inFlightGetRequests = new Map();
 
 const state = {
   customers: [],
@@ -47,22 +48,29 @@ function escapeHtml(value) {
 
 async function api(path, options = {}) {
   const method = options.method || "GET";
-  const requestPath = method === "GET" ? `${path}${path.includes("?") ? "&" : "?"}_=${Date.now()}` : path;
-  const response = await fetch(requestPath, {
-    cache: "no-store",
-    credentials: "same-origin",
-    headers: {
-      "Cache-Control": "no-store",
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-    ...options,
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data.error || "CRM request failed.");
+  if (method === "GET" && inFlightGetRequests.has(path)) return inFlightGetRequests.get(path);
+  const request = (async () => {
+    const requestPath = method === "GET" ? `${path}${path.includes("?") ? "&" : "?"}_=${Date.now()}` : path;
+    const response = await fetch(requestPath, {
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: {
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+      ...options,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "CRM request failed.");
+    return data;
+  })();
+  if (method === "GET") inFlightGetRequests.set(path, request);
+  try {
+    return await request;
+  } finally {
+    if (method === "GET") inFlightGetRequests.delete(path);
   }
-  return data;
 }
 
 function showNotice(message, type = "success") {
@@ -353,6 +361,61 @@ function monthlyJobSummary(month) {
     scheduledJobs,
     revenue,
   };
+}
+
+function dayDifference(dateString, baseDate) {
+  if (!dateString) return null;
+  const target = new Date(`${dateString}T00:00:00`);
+  const base = new Date(`${baseDate}T00:00:00`);
+  if (Number.isNaN(target.getTime()) || Number.isNaN(base.getTime())) return null;
+  return Math.round((target.getTime() - base.getTime()) / 86400000);
+}
+
+function rebuildDashboardFromState() {
+  const today = state.dashboard?.today || todayIso();
+  const customersById = new Map(state.customers.map((customer) => [customer.id, customer]));
+  const withCustomer = (job) => ({ ...job, customer: customersById.get(job.customerId) || null });
+  const todayJobs = state.allJobs.filter((job) => job.appointmentDate === today && job.jobStatus !== "Canceled").map(withCustomer);
+  const latestDue = new Map();
+  state.allJobs.forEach((job) => {
+    if (!job.nextServiceDate) return;
+    const existing = latestDue.get(job.customerId);
+    if (!existing || String(job.nextServiceDate).localeCompare(existing.nextServiceDate) > 0) latestDue.set(job.customerId, job);
+  });
+  const dueRecords = [...latestDue.values()].map((job) => ({ ...withCustomer(job), daysUntilDue: dayDifference(job.nextServiceDate, today) }))
+    .filter((job) => job.customer && job.daysUntilDue !== null);
+  const overdue = dueRecords.filter((job) => job.daysUntilDue < 0).sort((a, b) => a.daysUntilDue - b.daysUntilDue);
+  const dueSoon30 = dueRecords.filter((job) => job.daysUntilDue >= 0 && job.daysUntilDue <= 30).sort((a, b) => a.daysUntilDue - b.daysUntilDue);
+  const dueSoon60 = dueRecords.filter((job) => job.daysUntilDue > 30 && job.daysUntilDue <= 60).sort((a, b) => a.daysUntilDue - b.daysUntilDue);
+  const dueSoon90 = dueRecords.filter((job) => job.daysUntilDue > 60 && job.daysUntilDue <= 90).sort((a, b) => a.daysUntilDue - b.daysUntilDue);
+  const unpaidJobs = state.allJobs.filter((job) => !["Paid", "Not Invoiced"].includes(job.paymentStatus)).map(withCustomer);
+  state.dashboard = {
+    ...(state.dashboard || {}),
+    today,
+    stats: {
+      customers: state.customers.length,
+      jobs: state.allJobs.length,
+      todayJobs: todayJobs.length,
+      overdue: overdue.length,
+      dueSoon30: dueSoon30.length,
+      unpaidJobs: unpaidJobs.length,
+    },
+    todayJobs,
+    overdue,
+    dueSoon30,
+    dueSoon60,
+    dueSoon90,
+    unpaidJobs,
+  };
+}
+
+function upsertJobInState(savedJob) {
+  const existingIndex = state.allJobs.findIndex((job) => job.id === savedJob.id);
+  if (existingIndex >= 0) state.allJobs[existingIndex] = savedJob;
+  else state.allJobs.push(savedJob);
+  state.allJobs = sortJobsNewestFirst(state.allJobs);
+  if (state.selectedCustomer) state.jobs = jobsForCustomer(state.selectedCustomer.id);
+  rebuildDashboardFromState();
 }
 
 function renderDashboard() {
@@ -675,8 +738,7 @@ function bindCustomerButtons() {
         return;
       }
       state.selectedCustomer = customer;
-      const jobData = await api(`/api/crm/jobs?customerId=${encodeURIComponent(customer.id)}`);
-      state.jobs = sortJobsNewestFirst(jobData.jobs);
+      state.jobs = jobsForCustomer(customer.id);
       switchScreen("profile");
       renderProfile();
     });
@@ -863,13 +925,12 @@ function openJobModal(customer = null, mode = "service", job = null) {
         if (!matchedCustomer) throw new Error("Choose a Customer from the list.");
         formData.customerId = matchedCustomer.id;
       }
-      await api("/api/crm/jobs", { method: isEditing ? "PUT" : "POST", body: JSON.stringify(formData) });
+      const saved = await api("/api/crm/jobs", { method: isEditing ? "PUT" : "POST", body: JSON.stringify(formData) });
       closeModal(modal);
-      await loadData(false);
       const savedCustomerId = customer?.id || formData.customerId;
       state.selectedCustomer = state.customers.find((item) => item.id === savedCustomerId) || customer;
-      const jobData = await api(`/api/crm/jobs?customerId=${encodeURIComponent(savedCustomerId)}`);
-      state.jobs = sortJobsNewestFirst(jobData.jobs);
+      upsertJobInState(saved.job);
+      state.jobs = jobsForCustomer(savedCustomerId);
       renderDashboard();
       renderCustomers();
       renderDue();
@@ -1071,18 +1132,13 @@ function selectField(label, name, value, options) {
 }
 
 async function loadData(renderAll = true) {
-  const [dashboardData, customerData, jobData, expenseData] = await Promise.all([
-    api("/api/crm/dashboard"),
-    api("/api/crm/customers"),
-    api("/api/crm/jobs"),
-    api("/api/crm/expenses"),
-  ]);
+  const dashboardData = await api("/api/crm/dashboard");
   state.dashboard = dashboardData;
-  state.customers = customerData.customers;
-  state.allJobs = sortJobsNewestFirst(jobData.jobs || []);
-  state.expenses = expenseData.expenses || [];
-  state.expenseSummary = expenseData.summary || { total: 0, categoryTotals: {} };
-  state.expenseCategories = expenseData.categories || defaultExpenseCategories;
+  state.customers = dashboardData.customers || [];
+  state.allJobs = sortJobsNewestFirst(dashboardData.jobs || []);
+  state.expenses = dashboardData.expenses || [];
+  state.expenseSummary = dashboardData.expenseSummary || { total: 0, categoryTotals: {} };
+  state.expenseCategories = dashboardData.expenseCategories || defaultExpenseCategories;
   if (state.selectedCustomer) {
     state.selectedCustomer = state.customers.find((customer) => customer.id === state.selectedCustomer.id) || state.selectedCustomer;
     state.jobs = jobsForCustomer(state.selectedCustomer.id);

@@ -1,5 +1,5 @@
 const { requireSession } = require("./_shared/auth");
-const { appendRecord, findRecordById, getRows, updateRecord } = require("./_shared/google-sheets");
+const { appendRecord, findRecordById, getRowsBatch, updateRecord } = require("./_shared/google-sheets");
 const { folderPath, safeName, signedWorkOrderFileName, trashFile, uploadFile } = require("./_shared/google-drive");
 const { customerToClient, documentToClient, expenseToClient, hasCustomerData, isArchived, jobFromBody, jobToClient, nowIso, photoToClient, id } = require("./_shared/crm-records");
 const { json, readJson } = require("./_shared/http");
@@ -7,8 +7,10 @@ const { json, readJson } = require("./_shared/http");
 const PHOTO_CATEGORIES = ["Before", "During", "After", "Damage", "Equipment / Setup", "Receipt / Material", "Other"];
 const DOCUMENT_TYPES = ["Estimate", "Invoice", "Receipt", "Service Certificate", "Customer Document", "Insurance Document", "Other"];
 
-async function context(jobId) {
-  const [job, customerRows] = await Promise.all([findRecordById("Jobs", "Job ID", jobId), getRows("Customers")]);
+async function context(jobId, prefetchedRows = null) {
+  const rows = prefetchedRows || await getRowsBatch(["Jobs", "Customers"]);
+  const job = rows.Jobs.find((row) => row["Job ID"] === jobId) || null;
+  const customerRows = rows.Customers;
   if (!job || isArchived(job)) { const error = new Error("Job not found."); error.statusCode = 404; throw error; }
   const customerRecord = customerRows.find((row) => row["Customer ID"] === job["Customer ID"] && hasCustomerData(row) && !isArchived(row));
   if (!customerRecord) { const error = new Error("The Customer connected to this Job was not found."); error.statusCode = 400; throw error; }
@@ -48,8 +50,11 @@ exports.handler = async function handler(event) {
   try {
     const query = event.queryStringParameters || {};
     if (event.httpMethod === "GET") {
-      const { job, customer, jobClient } = await context(query.jobId);
-      const [photoRows, documentRows, expenseRows] = await Promise.all([getRows("Job Photos"), getRows("Job Documents"), getRows("Expenses")]);
+      const rows = await getRowsBatch(["Jobs", "Customers", "Job Photos", "Job Documents", "Expenses"]);
+      const { job, customer, jobClient } = await context(query.jobId, rows);
+      const photoRows = rows["Job Photos"];
+      const documentRows = rows["Job Documents"];
+      const expenseRows = rows.Expenses;
       const photos = photoRows.filter((row) => row["Job ID"] === query.jobId && row["Photo ID"] && !isArchived(row)).map(photoToClient);
       const documents = documentRows.filter((row) => row["Job ID"] === query.jobId && row["Document ID"] && !isArchived(row)).map(documentToClient);
       const expenses = expenseRows.filter((row) => row["Job ID"] === query.jobId && row["Expense ID"] && !isArchived(row)).map(expenseToClient);
