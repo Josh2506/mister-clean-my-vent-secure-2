@@ -1,4 +1,4 @@
-const CRM_SW_VERSION = "2026-08-26-expenses-drive-work-orders";
+const CRM_SW_VERSION = "2026-08-28-sheets-quota-fix";
 
 self.addEventListener("install", () => {
   self.skipWaiting();

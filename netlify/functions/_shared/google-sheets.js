@@ -1,7 +1,12 @@
 const schema = require("../../../crm/schema.json");
 const { getGoogleAccessToken } = require("./google-auth");
+const { AsyncLocalStorage } = require("async_hooks");
 
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+const MAX_RETRIES = 3;
+const LAYOUT_CACHE_MS = 5 * 60 * 1000;
+const layoutCache = new Map();
+const metricsStorage = new AsyncLocalStorage();
 
 function getSpreadsheetId() {
   const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
@@ -24,17 +29,50 @@ function a1TabName(tabName) {
   return `'${String(tabName).replace(/'/g, "''")}'`;
 }
 
+function sleep(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function retryDelay(response, attempt) {
+  const retryAfter = Number(response.headers.get("retry-after"));
+  if (Number.isFinite(retryAfter) && retryAfter > 0) return retryAfter * 1000;
+  return (250 * (2 ** attempt)) + Math.floor(Math.random() * 150);
+}
+
+function requestKind(options) {
+  return String(options.method || "GET").toUpperCase() === "GET" ? "reads" : "writes";
+}
+
+async function withSheetsMetrics(callback) {
+  return metricsStorage.run({ reads: 0, writes: 0, retries: 0 }, async () => {
+    const result = await callback();
+    return { result, metrics: { ...metricsStorage.getStore() } };
+  });
+}
+
 async function sheetsRequest(path, options = {}) {
   const accessToken = await getGoogleAccessToken([SHEETS_SCOPE]);
-  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}${path}`, {
-    ...options,
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json", ...(options.headers || {}) },
-  });
-  if (!response.ok) {
+  const kind = requestKind(options);
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+    const metrics = metricsStorage.getStore();
+    if (metrics) metrics[kind] += 1;
+    const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}${path}`, {
+      ...options,
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json", ...(options.headers || {}) },
+    });
+    if (response.ok) return response.status === 204 ? null : response.json();
     const responseText = await response.text();
-    throw new Error(`Google Sheets request failed: ${response.status} ${responseText}`);
+    if ([429, 503].includes(response.status) && attempt < MAX_RETRIES) {
+      if (metrics) metrics.retries += 1;
+      await sleep(retryDelay(response, attempt));
+      continue;
+    }
+    const error = new Error(`Google Sheets request failed: ${response.status} ${responseText}`);
+    error.statusCode = response.status === 429 ? 503 : response.status;
+    error.googleStatus = response.status;
+    throw error;
   }
-  return response.status === 204 ? null : response.json();
+  throw new Error("Google Sheets request failed after retrying.");
 }
 
 function getTabHeaders(tabName) {
@@ -131,9 +169,15 @@ async function ensureTab(tabName) {
 
 async function ensureHeaders(tabName) {
   const expectedHeaders = getTabHeaders(tabName);
-  await ensureTab(tabName);
   const headerRange = encodeURIComponent(`${a1TabName(tabName)}!A1:AZ1`);
-  const data = await sheetsRequest(`/values/${headerRange}`);
+  let data;
+  try {
+    data = await sheetsRequest(`/values/${headerRange}`);
+  } catch (error) {
+    if (error.googleStatus !== 400) throw error;
+    await ensureTab(tabName);
+    data = await sheetsRequest(`/values/${headerRange}`);
+  }
   const actualHeaders = (data.values?.[0] || []).map((header) => String(header || "").trim());
   const normalizedActual = new Set(actualHeaders.filter(Boolean).map(normalizeHeader));
   const missingHeaders = expectedHeaders.filter((expected) => ![expected, ...(headerAliases[expected] || [])]
@@ -147,7 +191,19 @@ async function ensureHeaders(tabName) {
       body: JSON.stringify({ values: [layout] }),
     });
   }
+  layoutCache.set(tabName, { layout, expiresAt: Date.now() + LAYOUT_CACHE_MS });
   return layout;
+}
+
+function rememberLayout(tabName, values = []) {
+  const layout = (values[0] || []).map((header) => String(header || "").trim());
+  if (layout.some(Boolean)) layoutCache.set(tabName, { layout, expiresAt: Date.now() + LAYOUT_CACHE_MS });
+}
+
+async function getLayout(tabName) {
+  const cached = layoutCache.get(tabName);
+  if (cached && cached.expiresAt > Date.now()) return cached.layout;
+  return ensureHeaders(tabName);
 }
 
 function nextAppendRow(values = []) {
@@ -164,38 +220,58 @@ function recordValuesForLayout(record, layout, expectedHeaders) {
 
 async function getRows(tabName) {
   const headers = getTabHeaders(tabName);
-  await ensureHeaders(tabName);
   const encodedRange = encodeURIComponent(`${a1TabName(tabName)}!A:AZ`);
-  const data = await sheetsRequest(`/values/${encodedRange}`);
+  let data;
+  try {
+    data = await sheetsRequest(`/values/${encodedRange}`);
+  } catch (error) {
+    if (error.googleStatus !== 400) throw error;
+    await ensureHeaders(tabName);
+    data = await sheetsRequest(`/values/${encodedRange}`);
+  }
+  rememberLayout(tabName, data.values || []);
   return valuesToRecords(data.values || [headers], tabName);
+}
+
+async function getRowsBatch(tabNames) {
+  const uniqueTabNames = [...new Set(tabNames)];
+  uniqueTabNames.forEach(getTabHeaders);
+  const params = new URLSearchParams();
+  uniqueTabNames.forEach((tabName) => params.append("ranges", `${a1TabName(tabName)}!A:AZ`));
+  try {
+    const data = await sheetsRequest(`/values:batchGet?${params.toString()}`);
+    const records = {};
+    uniqueTabNames.forEach((tabName, index) => {
+      const values = data.valueRanges?.[index]?.values || [getTabHeaders(tabName)];
+      rememberLayout(tabName, values);
+      records[tabName] = valuesToRecords(values, tabName);
+    });
+    return records;
+  } catch (error) {
+    if (error.googleStatus !== 400) throw error;
+    const entries = await Promise.all(uniqueTabNames.map(async (tabName) => [tabName, await getRows(tabName)]));
+    return Object.fromEntries(entries);
+  }
 }
 
 async function appendRecord(tabName, record) {
   const expectedHeaders = getTabHeaders(tabName);
-  const layout = await ensureHeaders(tabName);
+  const layout = await getLayout(tabName);
   const values = recordValuesForLayout(record, layout, expectedHeaders);
   const tableRange = encodeURIComponent(`${a1TabName(tabName)}!A:AZ`);
-  const data = await sheetsRequest(`/values/${tableRange}`);
-  const rowNumber = nextAppendRow(data.values || [layout]);
-  const endColumn = columnName(layout.length - 1);
-  const encodedRange = encodeURIComponent(`${a1TabName(tabName)}!A${rowNumber}:${endColumn}${rowNumber}`);
-  await sheetsRequest(`/values/${encodedRange}?valueInputOption=USER_ENTERED`, { method: "PUT", body: JSON.stringify({ values: [values] }) });
+  await sheetsRequest(`/values/${tableRange}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
+    method: "POST",
+    body: JSON.stringify({ values: [values] }),
+  });
   return record;
 }
 
 async function updateRecord(tabName, rowNumber, record) {
   const expectedHeaders = getTabHeaders(tabName);
-  const layout = await ensureHeaders(tabName);
+  const layout = await getLayout(tabName);
   const endColumn = columnName(layout.length - 1);
   const encodedRange = encodeURIComponent(`${a1TabName(tabName)}!A${rowNumber}:${endColumn}${rowNumber}`);
-  const currentData = await sheetsRequest(`/values/${encodedRange}`);
-  const currentValues = currentData.values?.[0] || [];
-  const values = layout.map((actualHeader, index) => {
-    const canonical = canonicalHeader(actualHeader, expectedHeaders);
-    if (record[canonical] !== undefined) return record[canonical];
-    if (record[actualHeader] !== undefined) return record[actualHeader];
-    return currentValues[index] || "";
-  });
+  const values = recordValuesForLayout(record, layout, expectedHeaders);
   await sheetsRequest(`/values/${encodedRange}?valueInputOption=USER_ENTERED`, { method: "PUT", body: JSON.stringify({ values: [values] }) });
   return record;
 }
@@ -205,4 +281,9 @@ async function findRecordById(tabName, idColumn, id) {
   return rows.find((row) => row[idColumn] === id) || null;
 }
 
-module.exports = { appendRecord, findRecordById, getRows, getTabHeaders, nextAppendRow, updateRecord, valuesToRecords };
+function clearSheetsCachesForTests() {
+  if (process.env.NODE_ENV !== "test") throw new Error("Sheets caches can be cleared only in tests.");
+  layoutCache.clear();
+}
+
+module.exports = { appendRecord, clearSheetsCachesForTests, findRecordById, getRows, getRowsBatch, getTabHeaders, nextAppendRow, updateRecord, valuesToRecords, withSheetsMetrics };

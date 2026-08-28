@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
 
 const require = createRequire(import.meta.url);
+process.env.NODE_ENV = "test";
 
 process.env.CRM_ADMIN_EMAILS = "owner@example.com";
 process.env.CRM_SESSION_SECRET = "this-is-a-long-random-test-session-secret";
@@ -18,6 +20,7 @@ const fileApi = require("../netlify/functions/crm-file.js");
 const login = require("../netlify/functions/crm-login.js");
 const records = require("../netlify/functions/_shared/crm-records.js");
 const googleSheets = require("../netlify/functions/_shared/google-sheets.js");
+const googleAuth = require("../netlify/functions/_shared/google-auth.js");
 const googleDrive = require("../netlify/functions/_shared/google-drive.js");
 const schema = require("../crm/schema.json");
 
@@ -179,6 +182,74 @@ assert.ok(schema.tabs.Jobs.includes("Signed Work Order File ID"), "Jobs should b
 assert.ok(!schema.tabs.Expenses.some((header) => /base64|binary/i.test(header)), "Sheets must not contain raw file columns");
 assert.equal(googleDrive.expenseFileName({ date: "2026-08-26", vendor: "Home Depot", total: "187.42", customerName: "Smith", originalName: "receipt.JPG" }), "2026-08-26_Smith_Home-Depot_187.42.jpg");
 assert.equal(googleDrive.signedWorkOrderFileName({ date: "2026-08-26", customerName: "Smith", originalName: "scan.pdf" }), "2026-08-26_Smith_Signed-Work-Order.pdf");
+
+process.env.GOOGLE_SHEETS_SPREADSHEET_ID = "test_spreadsheet";
+googleAuth.setGoogleAccessTokenForTests(async () => "test-access-token");
+const sheetsOriginalFetch = globalThis.fetch;
+let sheetsCalls = [];
+globalThis.fetch = async (url, options = {}) => {
+  sheetsCalls.push({ url: String(url), method: options.method || "GET" });
+  if (String(url).includes("values:batchGet")) {
+    return new Response(JSON.stringify({
+      valueRanges: [
+        { values: [schema.tabs.Customers] },
+        { values: [schema.tabs.Jobs] },
+        { values: [schema.tabs.Expenses] },
+      ],
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  if (String(url).includes(":append")) {
+    return new Response(JSON.stringify({ updates: { updatedRows: 1 } }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  return new Response(JSON.stringify({ values: [schema.tabs.Jobs] }), { status: 200, headers: { "content-type": "application/json" } });
+};
+
+googleSheets.clearSheetsCachesForTests();
+const batchMeasurement = await googleSheets.withSheetsMetrics(() => googleSheets.getRowsBatch(["Customers", "Jobs", "Expenses"]));
+assert.deepEqual(batchMeasurement.metrics, { reads: 1, writes: 0, retries: 0 }, "CRM bootstrap should batch three tabs into one Sheets read");
+
+const dashboardMeasurement = await dashboard.handler({
+  httpMethod: "GET",
+  headers: { cookie: `mcmv_crm_session=${encodeURIComponent(sessionCookie)}` },
+});
+assert.equal(dashboardMeasurement.statusCode, 200, "batched CRM dashboard should load successfully");
+assert.equal(dashboardMeasurement.headers["X-CRM-Sheets-Reads"], "1", "one dashboard refresh should use one Sheets read");
+
+googleSheets.clearSheetsCachesForTests();
+sheetsCalls = [];
+const appendMeasurement = await googleSheets.withSheetsMetrics(() => googleSheets.appendRecord("Jobs", job));
+assert.deepEqual(appendMeasurement.metrics, { reads: 1, writes: 1, retries: 0 }, "a cold Work Order append should use one header read and one write");
+assert.equal(sheetsCalls.filter((call) => call.method === "GET").length, 1, "Work Order append should not read the full Jobs tab");
+
+googleSheets.clearSheetsCachesForTests();
+const workOrderMeasurement = await jobs.handler({
+  httpMethod: "POST",
+  headers: { cookie: `mcmv_crm_session=${encodeURIComponent(sessionCookie)}` },
+  body: JSON.stringify({ customerId: customer["Customer ID"], serviceType: "Dryer Vent Cleaning", appointmentDate: "2026-08-28" }),
+});
+assert.equal(workOrderMeasurement.statusCode, 201, "Work Order creation should succeed through the API handler");
+assert.equal(workOrderMeasurement.headers["X-CRM-Sheets-Reads"], "1", "one Work Order creation should use one Sheets read");
+assert.equal(workOrderMeasurement.headers["X-CRM-Sheets-Writes"], "1", "one Work Order creation should use one Sheets write");
+
+googleSheets.clearSheetsCachesForTests();
+let retryAttempt = 0;
+globalThis.fetch = async () => {
+  retryAttempt += 1;
+  if (retryAttempt === 1) return new Response(JSON.stringify({ error: { status: "RESOURCE_EXHAUSTED" } }), { status: 429, headers: { "retry-after": "0.001" } });
+  return new Response(JSON.stringify({ values: [schema.tabs.Customers] }), { status: 200, headers: { "content-type": "application/json" } });
+};
+const retryMeasurement = await googleSheets.withSheetsMetrics(() => googleSheets.getRows("Customers"));
+assert.deepEqual(retryMeasurement.metrics, { reads: 2, writes: 0, retries: 1 }, "a legitimate 429 should retry once with backoff and then succeed");
+globalThis.fetch = sheetsOriginalFetch;
+googleAuth.setGoogleAccessTokenForTests(null);
+
+const adminAppSource = readFileSync(new URL("../crm-assets/admin-app.js", import.meta.url), "utf8");
+const loadDataSource = adminAppSource.match(/async function loadData[\s\S]*?\n}\n\nasync function showDashboard/)?.[0] || "";
+assert.equal((loadDataSource.match(/api\(/g) || []).length, 1, "CRM bootstrap and refresh should make one application API request");
+assert.match(loadDataSource, /api\("\/api\/crm\/dashboard"\)/, "CRM bootstrap should use the batched dashboard endpoint");
+const jobSaveSource = adminAppSource.match(/function openJobModal[\s\S]*?function searchableJobField/)?.[0] || "";
+assert.doesNotMatch(jobSaveSource, /loadData\(|\/api\/crm\/jobs\?customerId/, "saving a Work Order should update local state without a full reload");
+assert.doesNotMatch(adminAppSource, /setInterval\s*\(/, "the CRM should not poll Google Sheets");
 
 process.env.GOOGLE_DRIVE_CRM_FOLDER_ID = "root_folder";
 process.env.GOOGLE_DRIVE_WEB_APP_URL = "https://script.google.test/exec";

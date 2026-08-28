@@ -1,7 +1,9 @@
 const { requireSession } = require("./_shared/auth");
-const { getRows } = require("./_shared/google-sheets");
-const { customerToClient, dateDiffDays, hasCustomerData, hasJobData, isArchived, jobToClient, todayDate } = require("./_shared/crm-records");
+const { getRowsBatch, withSheetsMetrics } = require("./_shared/google-sheets");
+const { customerToClient, dateDiffDays, expenseToClient, hasCustomerData, hasJobData, isArchived, jobToClient, todayDate } = require("./_shared/crm-records");
 const { json } = require("./_shared/http");
+
+const EXPENSE_CATEGORIES = ["Gas / Fuel", "Parts & Materials", "Tools & Equipment", "Vehicle / Maintenance", "Advertising / Marketing", "Subcontractor / Labor", "Office / Business Supplies", "Insurance", "Other Business Expense"];
 
 function latestDueByCustomer(jobs) {
   const dueMap = new Map();
@@ -24,10 +26,15 @@ exports.handler = async function handler(event) {
   }
 
   try {
-    const [customerRows, jobRows] = await Promise.all([getRows("Customers"), getRows("Jobs")]);
+    const { result, metrics } = await withSheetsMetrics(async () => {
+    const rows = await getRowsBatch(["Customers", "Jobs", "Expenses"]);
+    const customerRows = rows.Customers;
+    const jobRows = rows.Jobs;
     const customers = customerRows.filter(hasCustomerData).filter((row) => !isArchived(row)).map(customerToClient);
     const jobs = jobRows.filter(hasJobData).filter((row) => !isArchived(row)).map(jobToClient);
+    const expenses = rows.Expenses.filter((row) => row["Expense ID"] && !isArchived(row)).map(expenseToClient);
     const customerById = new Map(customers.map((customer) => [customer.id, customer]));
+    const jobById = new Map(jobs.map((job) => [job.id, job]));
     const today = todayDate();
 
     const todayJobs = jobs
@@ -51,7 +58,15 @@ exports.handler = async function handler(event) {
       .filter((job) => !["Paid", "Not Invoiced"].includes(job.paymentStatus))
       .map((job) => ({ ...job, customer: customerById.get(job.customerId) || null }));
 
-    return json(200, {
+    const categoryTotals = {};
+    const expenseTotal = expenses.reduce((total, expense) => {
+      const amount = Number(expense.totalAmount || 0);
+      const safeAmount = Number.isFinite(amount) ? amount : 0;
+      categoryTotals[expense.category] = (categoryTotals[expense.category] || 0) + safeAmount;
+      return total + safeAmount;
+    }, 0);
+
+    return {
       today,
       stats: {
         customers: customers.length,
@@ -67,6 +82,21 @@ exports.handler = async function handler(event) {
       dueSoon60,
       dueSoon90,
       unpaidJobs,
+      customers,
+      jobs,
+      expenses: expenses.map((expense) => ({
+        ...expense,
+        customer: customerById.get(expense.customerId) || null,
+        job: jobById.get(expense.jobId) || null,
+      })),
+      expenseSummary: { total: expenseTotal, categoryTotals },
+      expenseCategories: EXPENSE_CATEGORIES,
+    };
+    });
+    return json(200, result, {
+      "X-CRM-Sheets-Reads": String(metrics.reads),
+      "X-CRM-Sheets-Writes": String(metrics.writes),
+      "X-CRM-Sheets-Retries": String(metrics.retries),
     });
   } catch (error) {
     return json(error.statusCode || 500, { error: error.message || "CRM dashboard request failed." });

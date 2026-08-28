@@ -1,5 +1,5 @@
 const { requireSession } = require("./_shared/auth");
-const { appendRecord, findRecordById, getRows, updateRecord } = require("./_shared/google-sheets");
+const { appendRecord, findRecordById, getRows, updateRecord, withSheetsMetrics } = require("./_shared/google-sheets");
 const { hasJobData, isArchived, jobFromBody, jobToClient } = require("./_shared/crm-records");
 const { json, readJson } = require("./_shared/http");
 
@@ -24,9 +24,16 @@ exports.handler = async function handler(event) {
 
     if (event.httpMethod === "POST") {
       const body = readJson(event);
-      const job = jobFromBody(body);
-      await appendRecord("Jobs", job);
-      return json(201, { job: jobToClient(job) });
+      const { result: job, metrics } = await withSheetsMetrics(async () => {
+        const record = jobFromBody(body);
+        await appendRecord("Jobs", record);
+        return record;
+      });
+      return json(201, { job: jobToClient(job), sheetsRequests: metrics }, {
+        "X-CRM-Sheets-Reads": String(metrics.reads),
+        "X-CRM-Sheets-Writes": String(metrics.writes),
+        "X-CRM-Sheets-Retries": String(metrics.retries),
+      });
     }
 
     if (event.httpMethod === "PUT") {
@@ -35,13 +42,19 @@ exports.handler = async function handler(event) {
       if (!jobId) {
         return json(400, { error: "Job ID is required." });
       }
-      const existing = await findRecordById("Jobs", "Job ID", jobId);
-      if (!existing) {
-        return json(404, { error: "Job not found." });
-      }
-      const updated = jobFromBody({ ...body, jobId }, existing);
-      await updateRecord("Jobs", existing.rowNumber, updated);
-      return json(200, { job: jobToClient(updated) });
+      const { result: updated, metrics } = await withSheetsMetrics(async () => {
+        const existing = await findRecordById("Jobs", "Job ID", jobId);
+        if (!existing) return null;
+        const record = jobFromBody({ ...body, jobId }, existing);
+        await updateRecord("Jobs", existing.rowNumber, record);
+        return record;
+      });
+      if (!updated) return json(404, { error: "Job not found." });
+      return json(200, { job: jobToClient(updated), sheetsRequests: metrics }, {
+        "X-CRM-Sheets-Reads": String(metrics.reads),
+        "X-CRM-Sheets-Writes": String(metrics.writes),
+        "X-CRM-Sheets-Retries": String(metrics.retries),
+      });
     }
 
     if (event.httpMethod === "DELETE") {

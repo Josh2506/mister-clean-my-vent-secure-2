@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 
 const tokenCache = new Map();
+let accessTokenTestOverride = null;
 
 function base64urlJson(value) {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -15,6 +16,7 @@ function getPrivateKey() {
 }
 
 async function getGoogleAccessToken(scopes) {
+  if (accessTokenTestOverride) return accessTokenTestOverride(scopes);
   const scope = [...new Set(scopes)].sort().join(" ");
   const now = Math.floor(Date.now() / 1000);
   const cached = tokenCache.get(scope);
@@ -60,4 +62,10 @@ async function getGoogleAccessToken(scopes) {
   return data.access_token;
 }
 
-module.exports = { getGoogleAccessToken };
+function setGoogleAccessTokenForTests(provider) {
+  if (process.env.NODE_ENV !== "test") throw new Error("Google access-token overrides are available only in tests.");
+  accessTokenTestOverride = provider;
+  tokenCache.clear();
+}
+
+module.exports = { getGoogleAccessToken, setGoogleAccessTokenForTests };
