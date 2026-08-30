@@ -652,7 +652,7 @@ function renderProfile() {
       </section>
       <section class="crm-panel crm-col-12">
         <div class="crm-panel-heading"><div><h2>Service History</h2><p>Completed visits and previous work for this customer.</p></div><button class="crm-btn" type="button" id="add-service-button">Add Service</button></div>
-        <div class="crm-list">${renderJobCards(profileJobs, false)}</div>
+        <div class="crm-list">${renderJobCards(profileJobs, false, true)}</div>
       </section>
     </div>
   `;
@@ -689,7 +689,7 @@ function renderCustomerCards(customers) {
   }).join("");
 }
 
-function renderJobCards(jobs, showCustomer) {
+function renderJobCards(jobs, showCustomer, allowRemove = false) {
   const sortedJobs = sortJobsNewestFirst(jobs);
   if (!sortedJobs.length) {
     return `<div class="crm-empty">Nothing here yet.</div>`;
@@ -712,6 +712,7 @@ function renderJobCards(jobs, showCustomer) {
         <div class="crm-actions">
           <button class="crm-btn secondary" type="button" data-view-job="${escapeHtml(job.id)}">Open Work Order</button>
           <button class="crm-btn warning" type="button" data-edit-service="${escapeHtml(job.id)}">Edit Service</button>
+          ${allowRemove ? `<button class="crm-btn danger" type="button" data-remove-service="${escapeHtml(job.id)}">Remove Service</button>` : ""}
         </div>
       </article>
     `;
@@ -725,6 +726,32 @@ function bindJobButtons(root = document) {
     const customer = customerById(job?.customerId);
     if (job && customer) openJobModal(customer, "service", job);
   }));
+  root.querySelectorAll("[data-remove-service]").forEach((button) => button.addEventListener("click", () => removeService(button.dataset.removeService, button)));
+}
+
+async function removeService(jobId, button) {
+  if (!confirm("Are you sure you want to remove this service from this customer?")) return;
+  const originalLabel = button.textContent;
+  button.disabled = true;
+  button.textContent = "Removing...";
+  try {
+    await api(`/api/crm/jobs?id=${encodeURIComponent(jobId)}`, { method: "DELETE" });
+    state.allJobs = state.allJobs.filter((job) => job.id !== jobId);
+    state.jobs = state.jobs.filter((job) => job.id !== jobId);
+    if (state.selectedJob?.id === jobId) state.selectedJob = null;
+    rebuildDashboardFromState();
+    renderDashboard();
+    renderCustomers();
+    renderDue();
+    renderExpenses();
+    renderProfile();
+    switchScreen("profile");
+    showNotice("Service removed from this customer.");
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = originalLabel;
+    showNotice(error.message || "Service could not be removed.", "error");
+  }
 }
 
 function bindCustomerButtons() {

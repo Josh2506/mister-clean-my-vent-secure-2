@@ -62,13 +62,19 @@ exports.handler = async function handler(event) {
       if (!jobId) {
         return json(400, { error: "Job ID is required." });
       }
-      const existing = await findRecordById("Jobs", "Job ID", jobId);
-      if (!existing) {
-        return json(404, { error: "Job not found." });
-      }
-      const archived = jobFromBody({ ...existing, jobId, archived: "TRUE" }, existing);
-      await updateRecord("Jobs", existing.rowNumber, archived);
-      return json(200, { ok: true });
+      const { result: removed, metrics } = await withSheetsMetrics(async () => {
+        const existing = await findRecordById("Jobs", "Job ID", jobId);
+        if (!existing) return null;
+        const archived = jobFromBody({ ...existing, jobId, archived: "TRUE" }, existing);
+        await updateRecord("Jobs", existing.rowNumber, archived);
+        return archived;
+      });
+      if (!removed) return json(404, { error: "Job not found." });
+      return json(200, { ok: true, jobId, sheetsRequests: metrics }, {
+        "X-CRM-Sheets-Reads": String(metrics.reads),
+        "X-CRM-Sheets-Writes": String(metrics.writes),
+        "X-CRM-Sheets-Retries": String(metrics.retries),
+      });
     }
 
     return json(405, { error: "Method not allowed." });
