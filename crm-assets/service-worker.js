@@ -1,4 +1,4 @@
-const CRM_SW_VERSION = "2026-08-29-service-removal";
+const CRM_SW_VERSION = "2026-08-30-service-removal-modal";
 
 self.addEventListener("install", () => {
   self.skipWaiting();

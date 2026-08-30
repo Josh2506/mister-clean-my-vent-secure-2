@@ -285,6 +285,8 @@ assert.match(adminAppSource, /data-remove-service=/, "each customer service card
 assert.match(serviceRemovalSource, /Are you sure you want to remove this service from this customer\?/, "service removal should require the requested confirmation");
 assert.match(serviceRemovalSource, /method: "DELETE"/, "confirmed service removal should call the Jobs delete API");
 assert.doesNotMatch(serviceRemovalSource, /loadData\(/, "service removal should update local state without rereading the full CRM");
+assert.match(jobSaveSource, /id="remove-service-modal">Remove Service/, "the Edit Service window should show a visible Remove Service button");
+assert.match(jobSaveSource, /await removeService\(job\.id, event\.currentTarget\)/, "the Edit Service removal button should use the confirmed removal flow");
 assert.doesNotMatch(adminAppSource, /setInterval\s*\(/, "the CRM should not poll Google Sheets");
 
 process.env.GOOGLE_DRIVE_CRM_FOLDER_ID = "root_folder";
