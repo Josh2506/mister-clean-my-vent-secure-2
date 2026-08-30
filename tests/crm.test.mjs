@@ -231,6 +231,36 @@ assert.equal(workOrderMeasurement.statusCode, 201, "Work Order creation should s
 assert.equal(workOrderMeasurement.headers["X-CRM-Sheets-Reads"], "1", "one Work Order creation should use one Sheets read");
 assert.equal(workOrderMeasurement.headers["X-CRM-Sheets-Writes"], "1", "one Work Order creation should use one Sheets write");
 
+const standardSheetsFetch = globalThis.fetch;
+googleSheets.clearSheetsCachesForTests();
+let removedJobUpdate = null;
+globalThis.fetch = async (url, options = {}) => {
+  if (String(url).includes("/values/") && (options.method || "GET") === "GET") {
+    return new Response(JSON.stringify({
+      values: [schema.tabs.Jobs, schema.tabs.Jobs.map((header) => job[header] ?? "")],
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  if (options.method === "PUT") {
+    removedJobUpdate = JSON.parse(options.body);
+    return new Response(JSON.stringify({ updatedRows: 1 }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  throw new Error(`Unexpected Sheets request while removing a service: ${options.method || "GET"} ${url}`);
+};
+const serviceRemoval = await jobs.handler({
+  httpMethod: "DELETE",
+  headers: { cookie: `mcmv_crm_session=${encodeURIComponent(sessionCookie)}` },
+  queryStringParameters: { id: job["Job ID"] },
+});
+assert.equal(serviceRemoval.statusCode, 200, "service removal should succeed through the API handler");
+assert.equal(serviceRemoval.headers["X-CRM-Sheets-Reads"], "1", "service removal should use one Sheets read");
+assert.equal(serviceRemoval.headers["X-CRM-Sheets-Writes"], "1", "service removal should use one Sheets write");
+assert.equal(
+  removedJobUpdate.values[0][schema.tabs.Jobs.indexOf("Archived")],
+  "TRUE",
+  "service removal should archive the Job row instead of deleting spreadsheet history"
+);
+globalThis.fetch = standardSheetsFetch;
+
 googleSheets.clearSheetsCachesForTests();
 let retryAttempt = 0;
 globalThis.fetch = async () => {
@@ -249,6 +279,12 @@ assert.equal((loadDataSource.match(/api\(/g) || []).length, 1, "CRM bootstrap an
 assert.match(loadDataSource, /api\("\/api\/crm\/dashboard"\)/, "CRM bootstrap should use the batched dashboard endpoint");
 const jobSaveSource = adminAppSource.match(/function openJobModal[\s\S]*?function searchableJobField/)?.[0] || "";
 assert.doesNotMatch(jobSaveSource, /loadData\(|\/api\/crm\/jobs\?customerId/, "saving a Work Order should update local state without a full reload");
+const serviceRemovalSource = adminAppSource.match(/async function removeService[\s\S]*?\n}\n\nfunction bindCustomerButtons/)?.[0] || "";
+assert.match(adminAppSource, /renderJobCards\(profileJobs, false, true\)/, "customer Service History should enable the removal control");
+assert.match(adminAppSource, /data-remove-service=/, "each customer service card should render a visible Remove Service button");
+assert.match(serviceRemovalSource, /Are you sure you want to remove this service from this customer\?/, "service removal should require the requested confirmation");
+assert.match(serviceRemovalSource, /method: "DELETE"/, "confirmed service removal should call the Jobs delete API");
+assert.doesNotMatch(serviceRemovalSource, /loadData\(/, "service removal should update local state without rereading the full CRM");
 assert.doesNotMatch(adminAppSource, /setInterval\s*\(/, "the CRM should not poll Google Sheets");
 
 process.env.GOOGLE_DRIVE_CRM_FOLDER_ID = "root_folder";
