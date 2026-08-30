@@ -730,7 +730,7 @@ function bindJobButtons(root = document) {
 }
 
 async function removeService(jobId, button) {
-  if (!confirm("Are you sure you want to remove this service from this customer?")) return;
+  if (!confirm("Are you sure you want to remove this service from this customer?")) return false;
   const originalLabel = button.textContent;
   button.disabled = true;
   button.textContent = "Removing...";
@@ -747,10 +747,12 @@ async function removeService(jobId, button) {
     renderProfile();
     switchScreen("profile");
     showNotice("Service removed from this customer.");
+    return true;
   } catch (error) {
     button.disabled = false;
     button.textContent = originalLabel;
     showNotice(error.message || "Service could not be removed.", "error");
+    return false;
   }
 }
 
@@ -928,6 +930,7 @@ function openJobModal(customer = null, mode = "service", job = null) {
       <div class="crm-actions">
         <button class="crm-btn" type="submit">${isEditing ? "Save Changes" : isWorkOrder ? "Save Work Order" : "Save Service"}</button>
         <button class="crm-btn secondary" type="button" data-close-modal>Cancel</button>
+        ${isEditing ? `<button class="crm-btn danger" type="button" id="remove-service-modal">Remove Service</button>` : ""}
       </div>
       <p class="crm-status" id="job-status"></p>
     </form>
@@ -938,6 +941,11 @@ function openJobModal(customer = null, mode = "service", job = null) {
   focusFirstEditableField(form);
   bindMobileInputFocus(form);
   modal.querySelector("[data-close-modal]").addEventListener("click", () => closeModal(modal));
+  if (isEditing) {
+    modal.querySelector("#remove-service-modal").addEventListener("click", async (event) => {
+      if (await removeService(job.id, event.currentTarget)) closeModal(modal);
+    });
+  }
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const status = modal.querySelector("#job-status");
