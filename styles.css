@@ -935,6 +935,13 @@ p {
   background: #d9dcc8;
 }
 
+.problem-card img.problem-card-image-contain {
+  height: auto;
+  aspect-ratio: auto;
+  object-fit: contain;
+  object-position: center;
+}
+
 .problem-card div {
   padding: 18px;
 }
