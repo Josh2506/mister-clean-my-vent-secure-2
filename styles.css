@@ -561,6 +561,78 @@ p {
   border-top: 1px solid rgba(79, 127, 24, 0.16);
 }
 
+.services-in-action-intro {
+  max-width: 760px;
+  margin-bottom: clamp(24px, 4vw, 38px);
+}
+
+.services-in-action-intro h2 {
+  color: var(--forest);
+}
+
+.services-in-action-intro p:last-child {
+  max-width: 680px;
+  margin-bottom: 0;
+  font-size: 1.04rem;
+}
+
+.services-in-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  max-width: 1120px;
+}
+
+.service-action-card {
+  overflow: hidden;
+  border: 2px solid rgba(79, 127, 24, 0.18);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 16px 42px rgba(19, 33, 13, 0.12);
+}
+
+.service-action-photos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px 10px 0;
+}
+
+.service-action-photos-three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.service-action-photos img {
+  display: block;
+  width: 100%;
+  height: clamp(138px, 14vw, 178px);
+  object-fit: cover;
+  object-position: center;
+  border-radius: 6px;
+  background: #e9e5d2;
+}
+
+.service-action-photos img.service-action-photo-contain {
+  object-fit: contain;
+  background: var(--forest);
+}
+
+.service-action-copy {
+  padding: 16px 18px 18px;
+}
+
+.service-action-copy h3 {
+  margin-bottom: 7px;
+  color: var(--forest);
+  font-size: clamp(1.08rem, 2vw, 1.3rem);
+}
+
+.service-action-copy p {
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
 .surface-cleaning-intro {
   max-width: 860px;
   margin-bottom: clamp(30px, 5vw, 54px);
@@ -804,6 +876,29 @@ p {
 }
 
 .gutter-project-group img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.recent-gutter-project {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  max-width: 1040px;
+  margin-top: 20px;
+}
+
+.recent-gutter-project figure {
+  overflow: hidden;
+  margin: 0;
+  border: 1px solid rgba(255, 247, 201, 0.2);
+  border-radius: 8px;
+  background: rgba(9, 20, 7, 0.28);
+  box-shadow: 0 12px 26px rgba(9, 20, 7, 0.18);
+}
+
+.recent-gutter-project img {
   display: block;
   width: 100%;
   height: auto;
@@ -1431,7 +1526,9 @@ textarea:focus {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .gutter-project-grid {
+  .services-in-action-grid,
+  .gutter-project-grid,
+  .recent-gutter-project {
     grid-template-columns: 1fr;
   }
 }
@@ -1572,6 +1669,14 @@ textarea:focus {
 
   .surface-equipment {
     padding: 16px;
+  }
+
+  .service-action-photos img {
+    height: 150px;
+  }
+
+  .service-action-photos-three img {
+    height: 126px;
   }
 
   .summer-photo-grid img {
