@@ -598,10 +598,6 @@ p {
   padding: 10px 10px 0;
 }
 
-.service-action-photos-three {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
 .service-action-photos img {
   display: block;
   width: 100%;
@@ -610,11 +606,6 @@ p {
   object-position: center;
   border-radius: 6px;
   background: #e9e5d2;
-}
-
-.service-action-photos img.service-action-photo-contain {
-  object-fit: contain;
-  background: var(--forest);
 }
 
 .service-action-copy {
@@ -1217,6 +1208,14 @@ address a {
   color: var(--gold);
 }
 
+.social-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: fit-content;
+  margin-top: 22px;
+}
+
 .social-link {
   display: inline-flex;
   align-items: center;
@@ -1232,12 +1231,28 @@ address a {
   background: rgba(255, 247, 201, 0.08);
 }
 
+.social-links .social-link {
+  margin-top: 0;
+}
+
 .social-link svg {
   width: 22px;
   height: 22px;
   fill: none;
   stroke: currentColor;
   stroke-width: 2;
+}
+
+.social-link-facebook svg {
+  fill: currentColor;
+  stroke: none;
+}
+
+.social-link-nextdoor svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .quote-form {
@@ -1511,6 +1526,10 @@ textarea:focus {
   padding: 8px 12px;
 }
 
+.footer-social-links {
+  margin-top: 0;
+}
+
 @media (max-width: 1180px) {
   .problem-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1675,10 +1694,6 @@ textarea:focus {
     height: 150px;
   }
 
-  .service-action-photos-three img {
-    height: 126px;
-  }
-
   .summer-photo-grid img {
     height: 190px;
   }
@@ -1705,6 +1720,26 @@ textarea:focus {
   .social-link {
     width: 100%;
     justify-content: center;
+  }
+
+  .social-links {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    width: 100%;
+  }
+
+  .social-links .social-link {
+    gap: 6px;
+    min-width: 0;
+    padding-inline: 8px;
+    font-size: 0.84rem;
+  }
+
+  .social-links .social-link svg {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
   }
 
   .footer-links {
