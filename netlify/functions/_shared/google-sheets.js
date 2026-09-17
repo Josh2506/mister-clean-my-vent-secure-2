@@ -167,6 +167,25 @@ async function ensureTab(tabName) {
   }
 }
 
+async function ensureColumnCapacity(tabName, requiredColumns) {
+  const metadata = await sheetsRequest("?fields=sheets.properties(sheetId,title,gridProperties.columnCount)");
+  const sheet = (metadata.sheets || []).find((entry) => entry.properties?.title === tabName);
+  if (!sheet) {
+    await sheetsRequest(":batchUpdate", {
+      method: "POST",
+      body: JSON.stringify({ requests: [{ addSheet: { properties: { title: tabName, gridProperties: { columnCount: Math.max(26, requiredColumns) } } } }] }),
+    });
+    return;
+  }
+  const currentColumns = Number(sheet.properties?.gridProperties?.columnCount || 0);
+  if (currentColumns < requiredColumns) {
+    await sheetsRequest(":batchUpdate", {
+      method: "POST",
+      body: JSON.stringify({ requests: [{ appendDimension: { sheetId: sheet.properties.sheetId, dimension: "COLUMNS", length: requiredColumns - currentColumns } }] }),
+    });
+  }
+}
+
 async function ensureHeaders(tabName) {
   const expectedHeaders = getTabHeaders(tabName);
   const headerRange = encodeURIComponent(`${a1TabName(tabName)}!A1:AZ1`);
@@ -184,6 +203,7 @@ async function ensureHeaders(tabName) {
     .some((candidate) => normalizedActual.has(normalizeHeader(candidate))));
   const layout = [...actualHeaders, ...missingHeaders];
   if (!actualHeaders.some(Boolean) || missingHeaders.length) {
+    await ensureColumnCapacity(tabName, layout.length);
     const endColumn = columnName(layout.length - 1);
     const encodedRange = encodeURIComponent(`${a1TabName(tabName)}!A1:${endColumn}1`);
     await sheetsRequest(`/values/${encodedRange}?valueInputOption=USER_ENTERED`, {
