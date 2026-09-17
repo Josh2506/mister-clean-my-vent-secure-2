@@ -255,6 +255,38 @@ assert.equal(workOrderMeasurement.statusCode, 201, "Work Order creation should s
 assert.equal(workOrderMeasurement.headers["X-CRM-Sheets-Reads"], "1", "one Work Order creation should use one Sheets read");
 assert.equal(workOrderMeasurement.headers["X-CRM-Sheets-Writes"], "1", "one Work Order creation should use one Sheets write");
 
+const defaultSheetsMock = globalThis.fetch;
+googleSheets.clearSheetsCachesForTests();
+const legacyJobHeaders = schema.tabs.Jobs.filter((header) => !["Taxable", "Subtotal", "Sales Tax", "Total Amount"].includes(header));
+let columnExpansionRequest = null;
+let migratedHeaderRow = null;
+globalThis.fetch = async (url, options = {}) => {
+  const method = options.method || "GET";
+  if (method === "GET" && String(url).includes("/values/")) {
+    return new Response(JSON.stringify({ values: [legacyJobHeaders] }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  if (method === "GET" && String(url).includes("fields=sheets.properties")) {
+    return new Response(JSON.stringify({ sheets: [{ properties: { sheetId: 123, title: "Jobs", gridProperties: { columnCount: 26 } } }] }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  if (String(url).includes(":batchUpdate")) {
+    columnExpansionRequest = JSON.parse(options.body);
+    return new Response(JSON.stringify({ replies: [{}] }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  if (method === "PUT") {
+    migratedHeaderRow = JSON.parse(options.body).values[0];
+    return new Response(JSON.stringify({ updatedRows: 1 }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  if (String(url).includes(":append")) {
+    return new Response(JSON.stringify({ updates: { updatedRows: 1 } }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  throw new Error(`Unexpected Sheets migration request: ${method} ${url}`);
+};
+await googleSheets.appendRecord("Jobs", taxableJob);
+assert.equal(columnExpansionRequest.requests[0].appendDimension.dimension, "COLUMNS", "the existing Jobs tab should be widened before tax headers are appended");
+assert.equal(columnExpansionRequest.requests[0].appendDimension.length, 3, "a 26-column Jobs grid should be expanded through column AC");
+assert.deepEqual(migratedHeaderRow.slice(-4), ["Taxable", "Subtotal", "Sales Tax", "Total Amount"], "tax headers should be appended without moving existing columns");
+globalThis.fetch = defaultSheetsMock;
+
 const standardSheetsFetch = globalThis.fetch;
 googleSheets.clearSheetsCachesForTests();
 let removedJobUpdate = null;
