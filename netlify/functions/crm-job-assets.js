@@ -39,7 +39,9 @@ function jobTotals(job, expenses) {
     else if (expense.category === "Subcontractor / Labor") totals.laborSubcontractor += amount;
     else totals.other += amount;
   });
-  totals.revenue = Number(job.finalPrice || job.quotedPrice || 0) || 0;
+  totals.revenue = Number(job.subtotal || job.finalPrice || job.quotedPrice || 0) || 0;
+  totals.salesTax = Number(job.salesTax || 0) || 0;
+  totals.totalAmount = Number(job.totalAmount || totals.revenue + totals.salesTax) || 0;
   totals.grossProfit = totals.revenue - totals.totalExpenses;
   return totals;
 }

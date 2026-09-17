@@ -38,6 +38,10 @@ Create a private Google Sheet named `Mister Clean My Vent CRM` with these tabs.
 | Service Description |
 | Quoted Price |
 | Final Price |
+| Taxable |
+| Subtotal |
+| Sales Tax |
+| Total Amount |
 | Payment Status |
 | Payment Method |
 | Technician Notes |
@@ -115,4 +119,3 @@ Starter service rows:
 | svc_driveway_cleaning | Driveway Cleaning |  | 12 | TRUE |  |
 | svc_pressure_washing | Pressure Washing |  | 12 | TRUE |  |
 | svc_other | Other |  |  | TRUE |  |
-

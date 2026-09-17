@@ -31,6 +31,10 @@ const CRM_TABS = {
     "Service Description",
     "Quoted Price",
     "Final Price",
+    "Taxable",
+    "Subtotal",
+    "Sales Tax",
+    "Total Amount",
     "Payment Status",
     "Payment Method",
     "Technician Notes",
@@ -122,4 +126,3 @@ function createMisterCleanMyVentCrmSheet() {
   Logger.log("CRM spreadsheet created: " + spreadsheet.getUrl());
   Logger.log("Spreadsheet ID: " + spreadsheet.getId());
 }
-

@@ -36,6 +36,10 @@ const recordFieldAliases = {
   "Service Description": ["Service Description", "Description"],
   "Quoted Price": ["Quoted Price", "Estimate", "Estimated Price"],
   "Final Price": ["Final Price", "Price", "Job Price"],
+  Taxable: ["Taxable", "Is Taxable", "Taxable Service"],
+  Subtotal: ["Subtotal", "Pre-Tax Amount"],
+  "Sales Tax": ["Sales Tax", "Tax Amount"],
+  "Total Amount": ["Total Amount", "Total", "Amount Including Tax"],
   "Payment Status": ["Payment Status", "Paid Status"],
   "Payment Method": ["Payment Method"],
   "Technician Notes": ["Technician Notes", "Notes", "Job Notes"],
@@ -91,6 +95,8 @@ function hasJobData(record) {
     "Service Description",
     "Quoted Price",
     "Final Price",
+    "Subtotal",
+    "Total Amount",
     "Technician Notes",
     "Next Service Date",
   ].some((field) => readRecordValue(record, field));
@@ -102,6 +108,35 @@ function normalizePhone(value) {
     return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
   }
   return clean(value);
+}
+
+const NJ_SALES_TAX_RATE = 0.06625;
+
+function moneyNumber(value) {
+  const amount = Number(String(value ?? "").replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+function roundMoney(value) {
+  return Math.round((moneyNumber(value) + Number.EPSILON) * 100) / 100;
+}
+
+function moneyString(value) {
+  return roundMoney(value).toFixed(2);
+}
+
+function isTaxableValue(value) {
+  return ["TRUE", "YES", "TAXABLE", "1"].includes(clean(value).toUpperCase());
+}
+
+function calculateJobAmounts(subtotalValue, taxableValue) {
+  const subtotal = roundMoney(subtotalValue);
+  const salesTax = isTaxableValue(taxableValue) ? roundMoney(subtotal * NJ_SALES_TAX_RATE) : 0;
+  return {
+    subtotal: moneyString(subtotal),
+    salesTax: moneyString(salesTax),
+    totalAmount: moneyString(subtotal + salesTax),
+  };
 }
 
 function customerFromBody(body, existing = {}) {
@@ -178,6 +213,29 @@ function jobFromBody(body, existing = {}) {
     throw error;
   }
 
+  const hasBodyField = (camelName, sheetName) => Object.prototype.hasOwnProperty.call(body, camelName)
+    || Object.prototype.hasOwnProperty.call(body, sheetName);
+  const taxableInput = hasBodyField("taxable", "Taxable")
+    ? (Object.prototype.hasOwnProperty.call(body, "taxable") ? body.taxable : body.Taxable)
+    : readRecordValue(existing, "Taxable");
+  const taxable = isTaxableValue(taxableInput);
+  const subtotalInput = Object.prototype.hasOwnProperty.call(body, "subtotal")
+    ? body.subtotal
+    : clean(body.Subtotal)
+      ? body.Subtotal
+      : Object.prototype.hasOwnProperty.call(body, "finalPrice")
+        ? body.finalPrice
+        : Object.prototype.hasOwnProperty.call(body, "Final Price")
+          ? body["Final Price"]
+          : readRecordValue(existing, "Subtotal") || readRecordValue(existing, "Final Price") || readRecordValue(existing, "Quoted Price");
+  const hasAmount = clean(subtotalInput) !== "";
+  if (hasAmount && (!Number.isFinite(Number(String(subtotalInput).replace(/[$,]/g, ""))) || moneyNumber(subtotalInput) < 0)) {
+    const error = new Error("Enter a valid subtotal amount.");
+    error.statusCode = 400;
+    throw error;
+  }
+  const amounts = hasAmount ? calculateJobAmounts(subtotalInput, taxable ? "TRUE" : "FALSE") : { subtotal: "", salesTax: "", totalAmount: "" };
+
   return {
     ...existing,
     "Job ID": existing["Job ID"] || body.jobId || id("job"),
@@ -188,7 +246,11 @@ function jobFromBody(body, existing = {}) {
     "Service Type": bodyField("serviceType", "Service Type") || "Dryer Vent Cleaning",
     "Service Description": bodyField("serviceDescription", "Service Description"),
     "Quoted Price": bodyField("quotedPrice", "Quoted Price"),
-    "Final Price": bodyField("finalPrice", "Final Price"),
+    "Final Price": amounts.subtotal,
+    Taxable: taxable ? "TRUE" : "FALSE",
+    Subtotal: amounts.subtotal,
+    "Sales Tax": amounts.salesTax,
+    "Total Amount": amounts.totalAmount,
     "Payment Status": bodyField("paymentStatus", "Payment Status") || "Not Invoiced",
     "Payment Method": bodyField("paymentMethod", "Payment Method"),
     "Technician Notes": bodyField("technicianNotes", "Technician Notes"),
@@ -209,6 +271,9 @@ function jobFromBody(body, existing = {}) {
 }
 
 function jobToClient(record) {
+  const taxable = isTaxableValue(readRecordValue(record, "Taxable"));
+  const legacySubtotal = readRecordValue(record, "Subtotal") || readRecordValue(record, "Final Price") || readRecordValue(record, "Quoted Price");
+  const calculated = clean(legacySubtotal) ? calculateJobAmounts(legacySubtotal, taxable ? "TRUE" : "FALSE") : { subtotal: "", salesTax: "", totalAmount: "" };
   return {
     id: readRecordValue(record, "Job ID"),
     customerId: readRecordValue(record, "Customer ID"),
@@ -219,6 +284,10 @@ function jobToClient(record) {
     serviceDescription: readRecordValue(record, "Service Description"),
     quotedPrice: readRecordValue(record, "Quoted Price"),
     finalPrice: readRecordValue(record, "Final Price"),
+    taxable,
+    subtotal: readRecordValue(record, "Subtotal") || calculated.subtotal,
+    salesTax: readRecordValue(record, "Sales Tax") || calculated.salesTax,
+    totalAmount: readRecordValue(record, "Total Amount") || calculated.totalAmount,
     paymentStatus: readRecordValue(record, "Payment Status"),
     paymentMethod: readRecordValue(record, "Payment Method"),
     technicianNotes: readRecordValue(record, "Technician Notes"),
@@ -334,6 +403,8 @@ function documentToClient(record) {
 }
 
 module.exports = {
+  NJ_SALES_TAX_RATE,
+  calculateJobAmounts,
   clean,
   customerFromBody,
   customerToClient,
