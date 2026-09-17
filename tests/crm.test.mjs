@@ -147,6 +147,29 @@ const job = records.jobFromBody({
   nextServiceDate: "2026-08-24",
 });
 assert.equal(records.jobToClient(job).customerId, customer["Customer ID"]);
+const taxableJob = records.jobFromBody({
+  customerId: customer["Customer ID"],
+  serviceType: "House Washing",
+  subtotal: "100.00",
+  taxable: "Taxable",
+  salesTax: "999.99",
+  totalAmount: "1099.99",
+});
+const taxableJobClient = records.jobToClient(taxableJob);
+assert.equal(taxableJob["Taxable"], "TRUE", "a service can be marked taxable");
+assert.equal(taxableJob["Subtotal"], "100.00", "the pre-tax subtotal should be stored separately");
+assert.equal(taxableJob["Sales Tax"], "6.63", "NJ sales tax should be calculated server-side at 6.625%");
+assert.equal(taxableJob["Total Amount"], "106.63", "the total should include calculated sales tax");
+assert.equal(taxableJob["Final Price"], "100.00", "the legacy Final Price field should remain compatible with pre-tax revenue");
+assert.equal(taxableJobClient.taxable, true);
+assert.equal(taxableJobClient.salesTax, "6.63");
+const nonTaxableJob = records.jobFromBody({ customerId: customer["Customer ID"], subtotal: "100.00", taxable: "Non-Taxable" });
+assert.equal(nonTaxableJob["Sales Tax"], "0.00", "non-taxable services should never receive sales tax");
+assert.equal(nonTaxableJob["Total Amount"], "100.00");
+const legacyJobClient = records.jobToClient({ "Job ID": "job_legacy", "Customer ID": customer["Customer ID"], "Final Price": "85.00" });
+assert.equal(legacyJobClient.subtotal, "85.00", "legacy work orders should use Final Price as their pre-tax subtotal");
+assert.equal(legacyJobClient.salesTax, "0.00", "legacy work orders should remain non-taxable unless explicitly marked");
+assert.equal(legacyJobClient.totalAmount, "85.00");
 assert.equal(records.hasJobData({}), false, "blank job sheet rows should be ignored");
 assert.equal(records.hasJobData({ "Job ID": "job_blank_only", "Customer ID": customer["Customer ID"] }), false, "ID-only job rows should be ignored");
 assert.equal(records.hasJobData(job), true, "real job sheet rows should be included");
@@ -179,6 +202,7 @@ assert.equal(clearedJob["Signed Work Order File ID"], "", "signed Work Order met
 
 assert.ok(schema.tabs.Expenses.includes("Google Drive File ID"), "Expenses tab should store Drive metadata, not file bytes");
 assert.ok(schema.tabs.Jobs.includes("Signed Work Order File ID"), "Jobs should be extended instead of adding a duplicate Work Orders table");
+assert.deepEqual(schema.tabs.Jobs.slice(schema.tabs.Jobs.indexOf("Taxable"), schema.tabs.Jobs.indexOf("Taxable") + 4), ["Taxable", "Subtotal", "Sales Tax", "Total Amount"], "Jobs should store tax fields separately");
 assert.ok(!schema.tabs.Expenses.some((header) => /base64|binary/i.test(header)), "Sheets must not contain raw file columns");
 assert.equal(googleDrive.expenseFileName({ date: "2026-08-26", vendor: "Home Depot", total: "187.42", customerName: "Smith", originalName: "receipt.JPG" }), "2026-08-26_Smith_Home-Depot_187.42.jpg");
 assert.equal(googleDrive.signedWorkOrderFileName({ date: "2026-08-26", customerName: "Smith", originalName: "scan.pdf" }), "2026-08-26_Smith_Signed-Work-Order.pdf");
@@ -287,6 +311,13 @@ assert.match(serviceRemovalSource, /method: "DELETE"/, "confirmed service remova
 assert.doesNotMatch(serviceRemovalSource, /loadData\(/, "service removal should update local state without rereading the full CRM");
 assert.match(jobSaveSource, /id="remove-service-modal">Remove Service/, "the Edit Service window should show a visible Remove Service button");
 assert.match(jobSaveSource, /await removeService\(job\.id, event\.currentTarget\)/, "the Edit Service removal button should use the confirmed removal flow");
+assert.match(jobSaveSource, /Sales Tax \(6\.625%\)/, "work orders should show the exact NJ sales tax rate");
+assert.match(jobSaveSource, /Subtotal \(Before Tax\)/, "work orders should show a separate pre-tax subtotal");
+assert.match(jobSaveSource, /Total Amount \(Including Tax\)/, "work orders should show a separate total including tax");
+assert.match(adminAppSource, /function renderSalesTax\(/, "the CRM should include a Sales Tax Summary screen");
+assert.match(adminAppSource, /job\.paymentStatus === "Paid"/, "sales tax reporting should include only paid work orders");
+assert.match(adminAppSource, /job\.jobStatus === "Completed"/, "sales tax reporting should include only completed work orders");
+assert.match(adminAppSource, /Completed revenue \(before tax\)/, "dashboard revenue should exclude collected sales tax");
 assert.doesNotMatch(adminAppSource, /setInterval\s*\(/, "the CRM should not poll Google Sheets");
 
 process.env.GOOGLE_DRIVE_CRM_FOLDER_ID = "root_folder";

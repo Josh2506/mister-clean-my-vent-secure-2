@@ -12,6 +12,7 @@ const state = {
   expenseCategories: [],
   selectedJob: null,
   dashboardMonth: "",
+  taxYear: "",
 };
 
 const defaultExpenseCategories = [
@@ -157,6 +158,7 @@ function shell() {
         <button type="button" data-screen="customers">Customers</button>
         <button type="button" data-screen="due">Due Soon</button>
         <button type="button" data-screen="expenses">Expenses</button>
+        <button type="button" data-screen="sales-tax">Sales Tax</button>
         <button type="button" data-screen="profile">Profile</button>
       </nav>
       <div class="crm-toast" id="crm-toast" role="status" aria-live="polite"></div>
@@ -165,6 +167,7 @@ function shell() {
         <section id="screen-customers" class="crm-screen"></section>
         <section id="screen-due" class="crm-screen"></section>
         <section id="screen-expenses" class="crm-screen"></section>
+        <section id="screen-sales-tax" class="crm-screen"></section>
         <section id="screen-profile" class="crm-screen"></section>
       </div>
       <div class="crm-modal" id="customer-modal" aria-hidden="true"></div>
@@ -341,6 +344,19 @@ function moneyValue(value) {
   return Number.isFinite(amount) ? amount : 0;
 }
 
+function jobSubtotal(job) {
+  return moneyValue(job?.subtotal || job?.finalPrice || job?.quotedPrice);
+}
+
+function jobSalesTax(job) {
+  return moneyValue(job?.salesTax);
+}
+
+function jobTotalAmount(job) {
+  const savedTotal = moneyValue(job?.totalAmount);
+  return savedTotal || jobSubtotal(job) + jobSalesTax(job);
+}
+
 function dashboardMonthOptions() {
   const currentMonth = monthKey(state.dashboard?.today || new Date().toISOString());
   const months = new Set([currentMonth]);
@@ -355,7 +371,7 @@ function monthlyJobSummary(month) {
   const monthJobs = state.allJobs.filter((job) => monthKey(job.dateCompleted || job.appointmentDate) === month);
   const completedJobs = monthJobs.filter((job) => job.jobStatus === "Completed" || Boolean(job.dateCompleted));
   const scheduledJobs = monthJobs.filter((job) => !["Completed", "Canceled"].includes(job.jobStatus) && !job.dateCompleted);
-  const revenue = completedJobs.reduce((total, job) => total + moneyValue(job.finalPrice || job.quotedPrice), 0);
+  const revenue = completedJobs.reduce((total, job) => total + jobSubtotal(job), 0);
   return {
     completedJobs: completedJobs.map((job) => ({ ...job, customer: customerById(job.customerId) })),
     scheduledJobs,
@@ -456,7 +472,7 @@ function renderDashboard() {
         <div class="crm-stats crm-monthly-stats">
           <div class="crm-stat"><strong>${monthly.completedJobs.length}</strong><span>Jobs completed</span></div>
           <div class="crm-stat"><strong>${monthly.scheduledJobs.length}</strong><span>Still scheduled</span></div>
-          <div class="crm-stat"><strong>${escapeHtml(formatMoney(monthly.revenue))}</strong><span>Completed revenue</span></div>
+          <div class="crm-stat"><strong>${escapeHtml(formatMoney(monthly.revenue))}</strong><span>Completed revenue (before tax)</span></div>
         </div>
         <h3 class="crm-subheading">Jobs Done</h3>
         <div class="crm-list">${renderJobCards(monthly.completedJobs, true)}</div>
@@ -476,6 +492,97 @@ function renderDashboard() {
     renderDashboard();
   });
   bindJobButtons(document.querySelector("#screen-dashboard"));
+}
+
+function salesTaxYears() {
+  const currentYear = String(state.dashboard?.today || todayIso()).slice(0, 4);
+  const years = new Set([currentYear]);
+  state.allJobs.forEach((job) => {
+    if (job.paymentStatus !== "Paid" || !(job.jobStatus === "Completed" || job.dateCompleted)) return;
+    const year = String(job.dateCompleted || job.appointmentDate || "").slice(0, 4);
+    if (/^\d{4}$/.test(year)) years.add(year);
+  });
+  return [...years].sort().reverse();
+}
+
+function salesTaxReport(year) {
+  const paidCompleted = state.allJobs.filter((job) => {
+    const serviceDate = job.dateCompleted || job.appointmentDate || "";
+    return job.paymentStatus === "Paid"
+      && (job.jobStatus === "Completed" || Boolean(job.dateCompleted))
+      && serviceDate.startsWith(`${year}-`);
+  });
+  const months = Array.from({ length: 12 }, (_, index) => ({
+    index,
+    label: new Date(Number(year), index, 1).toLocaleDateString(undefined, { month: "long" }),
+    taxableSubtotal: 0,
+    salesTax: 0,
+    totalAmount: 0,
+    jobs: 0,
+  }));
+  paidCompleted.forEach((job) => {
+    const monthIndex = Number(String(job.dateCompleted || job.appointmentDate).slice(5, 7)) - 1;
+    if (!months[monthIndex]) return;
+    const taxable = Boolean(job.taxable) || jobSalesTax(job) > 0;
+    if (taxable) months[monthIndex].taxableSubtotal += jobSubtotal(job);
+    months[monthIndex].salesTax += jobSalesTax(job);
+    months[monthIndex].totalAmount += jobTotalAmount(job);
+    months[monthIndex].jobs += 1;
+  });
+  const quarters = Array.from({ length: 4 }, (_, quarterIndex) => {
+    const quarterMonths = months.slice(quarterIndex * 3, quarterIndex * 3 + 3);
+    return {
+      label: `Q${quarterIndex + 1}`,
+      taxableSubtotal: quarterMonths.reduce((sum, month) => sum + month.taxableSubtotal, 0),
+      salesTax: quarterMonths.reduce((sum, month) => sum + month.salesTax, 0),
+      totalAmount: quarterMonths.reduce((sum, month) => sum + month.totalAmount, 0),
+      jobs: quarterMonths.reduce((sum, month) => sum + month.jobs, 0),
+    };
+  });
+  return {
+    months,
+    quarters,
+    taxableSubtotal: months.reduce((sum, month) => sum + month.taxableSubtotal, 0),
+    salesTax: months.reduce((sum, month) => sum + month.salesTax, 0),
+    totalAmount: months.reduce((sum, month) => sum + month.totalAmount, 0),
+    jobs: paidCompleted.length,
+  };
+}
+
+function renderSalesTax() {
+  const screen = document.querySelector("#screen-sales-tax");
+  if (!screen) return;
+  const years = salesTaxYears();
+  if (!state.taxYear || !years.includes(state.taxYear)) state.taxYear = years[0];
+  const report = salesTaxReport(state.taxYear);
+  screen.innerHTML = `
+    <div class="crm-page-title">
+      <h1>Sales Tax Summary</h1>
+      <p>New Jersey sales tax collected from completed and paid work orders. Tax is kept separate from business revenue.</p>
+    </div>
+    <section class="crm-panel">
+      <div class="crm-panel-heading">
+        <div><h2>${escapeHtml(state.taxYear)} Yearly Summary</h2><p>Only taxable amounts marked on paid, completed services contribute to sales tax.</p></div>
+        <div class="crm-field crm-month-picker"><label for="sales-tax-year">Year</label><select id="sales-tax-year">${years.map((year) => `<option value="${year}" ${year === state.taxYear ? "selected" : ""}>${year}</option>`).join("")}</select></div>
+      </div>
+      <div class="crm-stats crm-tax-year-stats">
+        <div class="crm-stat"><strong>${formatMoney(report.taxableSubtotal)}</strong><span>Taxable sales subtotal</span></div>
+        <div class="crm-stat"><strong>${formatMoney(report.salesTax)}</strong><span>Sales tax collected</span></div>
+        <div class="crm-stat"><strong>${report.jobs}</strong><span>Completed and paid work orders</span></div>
+      </div>
+    </section>
+    <section class="crm-panel crm-tax-section">
+      <h2>Quarterly</h2>
+      <div class="crm-tax-quarter-grid">${report.quarters.map((quarter) => `<article class="crm-card crm-tax-card"><h3>${quarter.label}</h3><p><span>Taxable subtotal</span><strong>${formatMoney(quarter.taxableSubtotal)}</strong></p><p><span>Sales tax</span><strong>${formatMoney(quarter.salesTax)}</strong></p><p><span>Paid work orders</span><strong>${quarter.jobs}</strong></p></article>`).join("")}</div>
+    </section>
+    <section class="crm-panel crm-tax-section">
+      <h2>Monthly</h2>
+      <div class="crm-tax-table-wrap"><table class="crm-tax-table"><thead><tr><th>Month</th><th>Paid Work Orders</th><th>Taxable Subtotal</th><th>Sales Tax Collected</th></tr></thead><tbody>${report.months.map((month) => `<tr><td>${month.label}</td><td>${month.jobs}</td><td>${formatMoney(month.taxableSubtotal)}</td><td><strong>${formatMoney(month.salesTax)}</strong></td></tr>`).join("")}</tbody></table></div>
+    </section>`;
+  screen.querySelector("#sales-tax-year").addEventListener("change", (event) => {
+    state.taxYear = event.target.value;
+    renderSalesTax();
+  });
 }
 
 function renderCustomers() {
@@ -705,7 +812,7 @@ function renderJobCards(jobs, showCustomer, allowRemove = false) {
         ${customerName}
         <p><strong>Service date:</strong> ${escapeHtml(formatDisplayDate(serviceDate))}${job.appointmentTime ? ` at ${escapeHtml(job.appointmentTime)}` : ""}</p>
         <p>Status: ${escapeHtml(job.jobStatus || "Not set")} | Payment: ${escapeHtml(job.paymentStatus || "Not set")}</p>
-        ${(job.finalPrice || job.quotedPrice) ? `<p><strong>Amount:</strong> ${formatMoney(job.finalPrice || job.quotedPrice)}</p>` : ""}
+        ${(job.subtotal || job.finalPrice || job.quotedPrice) ? `<div class="crm-financial-lines"><p><strong>Subtotal:</strong> ${formatMoney(jobSubtotal(job))}</p><p><strong>Sales Tax (6.625%):</strong> ${formatMoney(jobSalesTax(job))}</p><p><strong>Total Amount:</strong> ${formatMoney(jobTotalAmount(job))}</p></div>` : ""}
         <p><span class="crm-badge ${job.signedWorkOrderFileId ? "success" : "muted"}">${job.signedWorkOrderFileId ? "✓ Signed Work Order" : "No Signed Work Order Uploaded"}</span></p>
         <p>Next service: ${escapeHtml(formatDisplayDate(job.nextServiceDate))} ${due}</p>
         ${job.technicianNotes ? `<p>${escapeHtml(job.technicianNotes)}</p>` : ""}
@@ -744,6 +851,7 @@ async function removeService(jobId, button) {
     renderCustomers();
     renderDue();
     renderExpenses();
+    renderSalesTax();
     renderProfile();
     switchScreen("profile");
     showNotice("Service removed from this customer.");
@@ -919,7 +1027,10 @@ function openJobModal(customer = null, mode = "service", job = null) {
         ${selectField("Job Status", "jobStatus", job?.jobStatus || (isWorkOrder ? "Scheduled" : "Completed"), ["Lead", "Estimate Scheduled", "Estimate Sent", "Scheduled", "In Progress", "Completed", "Canceled"])}
         ${selectField("Service Type", "serviceType", job?.serviceType || "Dryer Vent Cleaning", serviceOptions)}
         ${field("Quoted Price", "quotedPrice", job?.quotedPrice || "")}
-        ${field("Final Price", "finalPrice", job?.finalPrice || "")}
+        ${selectField("Taxable Service", "taxable", job?.taxable ? "Taxable" : "Non-Taxable", ["Non-Taxable", "Taxable"])}
+        ${field("Subtotal (Before Tax)", "subtotal", job?.subtotal || job?.finalPrice || "", false, "number")}
+        ${readonlyMoneyField("Sales Tax (6.625%)", "salesTax", job?.salesTax || "0.00")}
+        ${readonlyMoneyField("Total Amount (Including Tax)", "totalAmount", job?.totalAmount || job?.subtotal || job?.finalPrice || "0.00")}
         ${selectField("Payment Status", "paymentStatus", job?.paymentStatus || "Not Invoiced", ["Not Invoiced", "Unpaid", "Partially Paid", "Paid"])}
         ${field("Payment Method", "paymentMethod", job?.paymentMethod || "")}
         ${field("Date Completed", "dateCompleted", job?.dateCompleted || (isWorkOrder ? "" : today), false, "date")}
@@ -940,6 +1051,15 @@ function openJobModal(customer = null, mode = "service", job = null) {
   const form = modal.querySelector("#job-form");
   focusFirstEditableField(form);
   bindMobileInputFocus(form);
+  const refreshTaxAmounts = () => {
+    const subtotal = moneyValue(form.elements.subtotal.value);
+    const salesTax = form.elements.taxable.value === "Taxable" ? Math.round((subtotal * 0.06625 + Number.EPSILON) * 100) / 100 : 0;
+    form.elements.salesTax.value = salesTax.toFixed(2);
+    form.elements.totalAmount.value = (Math.round((subtotal + salesTax + Number.EPSILON) * 100) / 100).toFixed(2);
+  };
+  form.elements.subtotal.addEventListener("input", refreshTaxAmounts);
+  form.elements.taxable.addEventListener("change", refreshTaxAmounts);
+  refreshTaxAmounts();
   modal.querySelector("[data-close-modal]").addEventListener("click", () => closeModal(modal));
   if (isEditing) {
     modal.querySelector("#remove-service-modal").addEventListener("click", async (event) => {
@@ -970,6 +1090,7 @@ function openJobModal(customer = null, mode = "service", job = null) {
       renderCustomers();
       renderDue();
       renderExpenses();
+      renderSalesTax();
       renderProfile();
       switchScreen("profile");
       showNotice(`${isEditing ? "Service changes" : isWorkOrder ? "Work Order" : "Service"} saved to Google Sheets.`);
@@ -1070,7 +1191,7 @@ async function openJobDetail(jobId) {
     const data = await api(`/api/crm/job-assets?jobId=${encodeURIComponent(jobId)}`); state.selectedJob = data.job;
     const signed = data.job.signedWorkOrderFileId;
     modal.innerHTML = `<section class="crm-modal-card crm-job-detail"><div class="crm-preview-header"><div><h2>${escapeHtml(data.job.serviceType || "Work Order")}</h2><p>${escapeHtml(data.customer.name)} · ${escapeHtml(formatDisplayDate(jobServiceDate(data.job)))}</p></div><div class="crm-actions"><button class="crm-btn warning" id="job-edit-service" type="button">Edit Service</button><button class="crm-btn secondary" data-close-modal type="button">Close</button></div></div>
-      <div class="crm-stats"><div class="crm-stat"><strong>${formatMoney(data.totals.revenue)}</strong><span>Job Revenue</span></div><div class="crm-stat"><strong>${formatMoney(data.totals.totalExpenses)}</strong><span>Total Job Expenses</span></div><div class="crm-stat"><strong>${formatMoney(data.totals.grossProfit)}</strong><span>Gross Profit</span></div></div>
+      <div class="crm-stats crm-job-financial-stats"><div class="crm-stat"><strong>${formatMoney(data.job.subtotal || data.totals.revenue)}</strong><span>Subtotal (before tax)</span></div><div class="crm-stat"><strong>${formatMoney(data.job.salesTax)}</strong><span>Sales Tax (6.625%)</span></div><div class="crm-stat"><strong>${formatMoney(data.job.totalAmount || data.totals.totalAmount)}</strong><span>Total Amount</span></div><div class="crm-stat"><strong>${formatMoney(data.totals.totalExpenses)}</strong><span>Total Job Expenses</span></div><div class="crm-stat"><strong>${formatMoney(data.totals.grossProfit)}</strong><span>Gross Profit (before tax)</span></div></div>
       <section class="crm-subpanel"><h3>Job Expenses</h3><div class="crm-job-costs"><span>Parts & Materials <strong>${formatMoney(data.totals.partsMaterials)}</strong></span><span>Fuel / Travel <strong>${formatMoney(data.totals.fuelTravel)}</strong></span><span>Labor / Subcontractor <strong>${formatMoney(data.totals.laborSubcontractor)}</strong></span><span>Other Expenses <strong>${formatMoney(data.totals.other)}</strong></span></div><div class="crm-actions"><button class="crm-btn" id="job-add-expense" type="button">+ Add Expense</button></div>${data.expenses.length ? data.expenses.map(expenseCard).join("") : `<div class="crm-empty">No expenses linked to this Job.</div>`}</section>
       <section class="crm-subpanel"><h3>Signed Work Order</h3>${signed ? `<p class="crm-badge success">✓ Signed Work Order</p><p>${escapeHtml(data.job.signedWorkOrderFileName)}</p><div class="crm-actions"><button class="crm-btn secondary" data-preview-asset="${escapeHtml(signed)}" data-title="${escapeHtml(data.job.signedWorkOrderFileName)}" data-drive-url="${escapeHtml(data.job.signedWorkOrderUrl)}" type="button">View Signed Work Order</button><button class="crm-btn" data-upload-asset="signedWorkOrder" type="button">Replace Photo</button><button class="crm-btn danger" data-delete-asset="signedWorkOrder" data-job-id="${escapeHtml(jobId)}" type="button">Delete Photo</button></div>` : `<p class="crm-badge muted">No Signed Work Order Uploaded</p><div class="crm-actions"><button class="crm-btn" data-upload-asset="signedWorkOrder" type="button">Take Photo / Upload Signed Work Order</button></div>`}</section>
       <section class="crm-subpanel"><h3>Job Photos</h3><div class="crm-actions"><button class="crm-btn" data-upload-asset="photo" type="button">+ Add Photos</button></div><div class="crm-gallery">${data.photos.length ? data.photos.map((photo) => `<article class="crm-gallery-item"><button type="button" data-preview-asset="${escapeHtml(photo.googleDriveFileId)}" data-title="${escapeHtml(photo.fileName)}" data-drive-url="${escapeHtml(photo.googleDriveFileUrl)}"><img src="${fileUrl(photo.googleDriveFileId)}" alt="${escapeHtml(photo.category)} job photo"><span>${escapeHtml(photo.category)}</span></button><button class="crm-link-button danger-text" data-delete-asset="photo" data-id="${escapeHtml(photo.id)}" type="button">Delete</button></article>`).join("") : `<div class="crm-empty">No Job Photos uploaded.</div>`}</div></section>
@@ -1140,6 +1261,13 @@ function field(label, name, value, required = false, type = "text", className = 
   </div>`;
 }
 
+function readonlyMoneyField(label, name, value) {
+  return `<div class="crm-field crm-calculated-field">
+    <label for="${name}">${label}</label>
+    <input id="${name}" name="${name}" type="number" step="0.01" min="0" value="${escapeHtml(value)}" readonly aria-readonly="true">
+  </div>`;
+}
+
 function textareaField(label, name, value) {
   return `<div class="crm-field full">
     <label for="${name}">${label}</label>
@@ -1183,6 +1311,7 @@ async function loadData(renderAll = true) {
     renderCustomers();
     renderDue();
     renderExpenses();
+    renderSalesTax();
     renderProfile();
   }
 }

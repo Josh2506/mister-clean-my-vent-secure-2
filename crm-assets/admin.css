@@ -201,6 +201,17 @@ textarea {
 .crm-month-picker { width: min(220px, 100%); margin: 0; }
 .crm-monthly-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 18px; }
 .crm-subheading { margin: 0 0 10px; }
+.crm-tax-section { margin-top: 14px; }
+.crm-tax-year-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.crm-tax-quarter-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.crm-tax-card { padding: 14px; }
+.crm-tax-card p { display: flex; justify-content: space-between; gap: 10px; margin: 8px 0 0; }
+.crm-tax-card p span { color: var(--crm-muted); }
+.crm-tax-table-wrap { overflow-x: auto; }
+.crm-tax-table { width: 100%; border-collapse: collapse; }
+.crm-tax-table th, .crm-tax-table td { padding: 11px 12px; border-bottom: 1px solid var(--crm-line); text-align: right; white-space: nowrap; }
+.crm-tax-table th:first-child, .crm-tax-table td:first-child { text-align: left; }
+.crm-tax-table th { color: var(--crm-muted); font-size: 0.85rem; }
 
 .crm-stats {
   display: grid;
@@ -336,6 +347,11 @@ textarea {
   line-height: 1.4;
 }
 
+.crm-financial-lines { margin: 10px 0; padding: 9px 11px; border-radius: 10px; background: #f3f8ef; }
+.crm-financial-lines p { display: flex; justify-content: space-between; gap: 12px; margin: 4px 0; }
+.crm-calculated-field input[readonly] { background: #edf3e9; color: var(--crm-green); font-weight: 700; }
+.crm-job-financial-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
 .crm-card a {
   color: var(--crm-green);
   font-weight: 700;
@@ -410,7 +426,7 @@ textarea {
   left: 0;
   z-index: 8;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   border-top: 1px solid var(--crm-line);
   background: #fffef4;
 }
@@ -504,6 +520,7 @@ textarea {
   .crm-expense-desktop { display: none; }
   .crm-expense-mobile { display: block; }
   .crm-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .crm-tax-quarter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 640px) {
@@ -541,8 +558,10 @@ textarea {
   .crm-panel-heading .crm-btn,
   .crm-month-picker { width: 100%; }
   .crm-monthly-stats { grid-template-columns: 1fr; }
+  .crm-tax-year-stats, .crm-job-financial-stats { grid-template-columns: 1fr; }
+  .crm-tax-quarter-grid { grid-template-columns: 1fr; }
 
-  .crm-bottom-nav button { min-height: 66px; padding: 5px 3px; font-size: 0.78rem; }
+  .crm-bottom-nav button { min-height: 66px; padding: 5px 2px; font-size: 0.72rem; }
   .crm-filter-grid, .crm-job-costs { grid-template-columns: 1fr; }
   .crm-expense-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .crm-gallery { grid-template-columns: 1fr; }
@@ -564,7 +583,7 @@ textarea {
     top: 75px;
     width: min(1180px, calc(100% - 28px));
     margin: 0 auto;
-    grid-template-columns: repeat(5, max-content);
+    grid-template-columns: repeat(6, max-content);
     justify-content: start;
     border: 1px solid var(--crm-line);
     border-radius: var(--crm-radius);
