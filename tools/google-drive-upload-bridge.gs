@@ -154,6 +154,12 @@ function calendarTest_() {
   return { calendar: calendarData_(calendar, { writeTest: true, testedAt: new Date().toISOString() }) };
 }
 
+// Run once from the Apps Script editor after adding Calendar scopes.
+// The test event is removed by calendarTest_ after the connection is verified.
+function authorizeCalendarBridge() {
+  return calendarTest_();
+}
+
 function appointmentDate_(dateText, timeText) {
   const dateParts = String(dateText || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!dateParts) throw new Error("A valid appointment date is required for Calendar sync.");
