@@ -42,6 +42,17 @@ const CRM_TABS = {
     "After Photo Folder URL",
     "Date Completed",
     "Next Service Date",
+    "Google Drive Folder ID",
+    "Google Drive Folder URL",
+    "Signed Work Order File ID",
+    "Signed Work Order URL",
+    "Signed Work Order File Name",
+    "Signed Work Order Uploaded At",
+    "Estimated Duration Minutes",
+    "Calendar Event ID",
+    "Calendar Sync Status",
+    "Calendar Last Synced At",
+    "Calendar Sync Error",
     "Created At",
     "Updated At",
     "Archived"
@@ -90,7 +101,11 @@ const CRM_TABS = {
     "Default Reminder Months",
     "Active",
     "Notes"
-  ]
+  ],
+  Mileage: ["Mileage ID", "Date", "Vehicle", "Entry Type", "Starting Odometer", "Ending Odometer", "Total Miles", "Personal or Nonqualifying Miles", "Eligible Business Miles", "Starting Location", "Destinations", "Business Purpose", "Mileage Source", "Review Status", "Customer ID", "Job ID", "IRS Rate", "Potential Deduction", "Home Office Qualified", "Parking and Tolls", "Notes", "Created At", "Updated At", "Archived"],
+  "Mileage Documents": ["Document ID", "Mileage ID", "Category", "File Name", "MIME Type", "Google Drive File ID", "Google Drive File URL", "Uploaded At", "Archived"],
+  "Mileage Rates": ["Rate ID", "Effective Start", "Effective End", "Business Rate", "Source", "Notes", "Active", "Updated At"],
+  "CRM Settings": ["Setting Key", "Setting Value", "Description", "Updated At"]
 };
 
 const STARTER_SERVICES = [
@@ -120,6 +135,18 @@ function createMisterCleanMyVentCrmSheet() {
     if (tabName === "Services") {
       sheet.getRange(2, 1, STARTER_SERVICES.length, STARTER_SERVICES[0].length).setValues(STARTER_SERVICES);
       sheet.autoResizeColumns(1, headings.length);
+    }
+    if (tabName === "Mileage Rates") {
+      sheet.getRange(2, 1, 2, headings.length).setValues([
+        ["rate_2026_h1", "2026-01-01", "2026-06-30", "0.725", "IRS standard mileage rate", "January through June 2026", "TRUE", new Date().toISOString()],
+        ["rate_2026_h2", "2026-07-01", "2026-12-31", "0.76", "IRS standard mileage rate", "July through December 2026", "TRUE", new Date().toISOString()]
+      ]);
+    }
+    if (tabName === "CRM Settings") {
+      sheet.getRange(2, 1, 2, headings.length).setValues([
+        ["DEFAULT_VEHICLE", "2007 Toyota Tacoma", "Default vehicle for mileage entries", new Date().toISOString()],
+        ["HOME_OFFICE_QUALIFIED", "FALSE", "Whether a qualifying home office is currently documented", new Date().toISOString()]
+      ]);
     }
   });
 

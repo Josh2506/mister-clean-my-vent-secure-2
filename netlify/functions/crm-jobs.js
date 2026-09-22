@@ -2,6 +2,21 @@ const { requireSession } = require("./_shared/auth");
 const { appendRecord, findRecordById, getRows, updateRecord, withSheetsMetrics } = require("./_shared/google-sheets");
 const { hasJobData, isArchived, jobFromBody, jobToClient } = require("./_shared/crm-records");
 const { json, readJson } = require("./_shared/http");
+const { syncJobCalendar } = require("./_shared/google-calendar");
+
+async function applyCalendarSync(record, body) {
+  try {
+    const calendar = await syncJobCalendar(record, { customerName: body.calendarCustomerName, address: body.calendarJobAddress });
+    record["Calendar Event ID"] = calendar.eventId || record["Calendar Event ID"] || "";
+    record["Calendar Sync Status"] = calendar.status || "Not scheduled";
+    record["Calendar Last Synced At"] = calendar.lastSyncedAt || "";
+    record["Calendar Sync Error"] = calendar.error || "";
+  } catch (error) {
+    record["Calendar Sync Status"] = "Error";
+    record["Calendar Sync Error"] = error.message || "Calendar synchronization failed.";
+  }
+  return record;
+}
 
 exports.handler = async function handler(event) {
   const auth = requireSession(event);
@@ -26,6 +41,7 @@ exports.handler = async function handler(event) {
       const body = readJson(event);
       const { result: job, metrics } = await withSheetsMetrics(async () => {
         const record = jobFromBody(body);
+        await applyCalendarSync(record, body);
         await appendRecord("Jobs", record);
         return record;
       });
@@ -46,6 +62,7 @@ exports.handler = async function handler(event) {
         const existing = await findRecordById("Jobs", "Job ID", jobId);
         if (!existing) return null;
         const record = jobFromBody({ ...body, jobId }, existing);
+        await applyCalendarSync(record, body);
         await updateRecord("Jobs", existing.rowNumber, record);
         return record;
       });

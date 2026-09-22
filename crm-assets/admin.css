@@ -381,6 +381,12 @@ textarea {
 
 .crm-badge.success { background: #e6f4df; color: var(--crm-green); }
 .crm-badge.muted { background: #eef0ec; color: var(--crm-muted); }
+.crm-badge.warning { background: #fff1c7; color: #755100; }
+.crm-help { color: var(--crm-muted); line-height: 1.45; }
+.crm-setting { display: flex; align-items: center; gap: 9px; margin-top: 16px; font-weight: 700; }
+.crm-setting input { width: 22px; height: 22px; }
+.crm-mileage-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.crm-calendar-status { margin-top: 0; }
 .crm-money { color: var(--crm-green); font-size: 1.25rem; white-space: nowrap; }
 .crm-expense-card { display: grid; grid-template-columns: 1fr auto; gap: 10px 16px; align-items: start; }
 .crm-expense-card .crm-actions { grid-column: 1 / -1; }
@@ -426,7 +432,8 @@ textarea {
   left: 0;
   z-index: 8;
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(7, minmax(72px, 1fr));
+  overflow-x: auto;
   border-top: 1px solid var(--crm-line);
   background: #fffef4;
 }
@@ -521,6 +528,7 @@ textarea {
   .crm-expense-mobile { display: block; }
   .crm-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .crm-tax-quarter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .crm-mileage-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 640px) {
@@ -583,7 +591,7 @@ textarea {
     top: 75px;
     width: min(1180px, calc(100% - 28px));
     margin: 0 auto;
-    grid-template-columns: repeat(6, max-content);
+    grid-template-columns: repeat(7, max-content);
     justify-content: start;
     border: 1px solid var(--crm-line);
     border-radius: var(--crm-radius);
@@ -601,4 +609,18 @@ textarea {
     left: auto;
     margin: 0;
   }
+}
+
+@media print {
+  body.printing-mileage .crm-header,
+  body.printing-mileage .crm-bottom-nav,
+  body.printing-mileage .crm-toast,
+  body.printing-mileage .crm-page-title .crm-actions,
+  body.printing-mileage #screen-mileage > .crm-panel:not(.crm-mileage-report),
+  body.printing-mileage .crm-mileage-report .crm-actions { display: none !important; }
+  body.printing-mileage .crm-screen { display: none !important; }
+  body.printing-mileage #screen-mileage { display: block !important; }
+  body.printing-mileage .crm-content { width: 100%; padding: 0; }
+  body.printing-mileage .crm-mileage-report { border: 0; padding: 0; }
+  body.printing-mileage .crm-card { break-inside: avoid; }
 }

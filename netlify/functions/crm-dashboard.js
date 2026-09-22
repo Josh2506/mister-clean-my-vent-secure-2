@@ -1,6 +1,8 @@
 const { requireSession } = require("./_shared/auth");
 const { getRowsBatch, withSheetsMetrics } = require("./_shared/google-sheets");
 const { customerToClient, dateDiffDays, expenseToClient, hasCustomerData, hasJobData, isArchived, jobToClient, todayDate } = require("./_shared/crm-records");
+const { mileageToClient } = require("./_shared/crm-records");
+const { getCalendarStatus } = require("./_shared/google-calendar");
 const { json } = require("./_shared/http");
 
 const EXPENSE_CATEGORIES = ["Gas / Fuel", "Parts & Materials", "Tools & Equipment", "Vehicle / Maintenance", "Advertising / Marketing", "Subcontractor / Labor", "Office / Business Supplies", "Insurance", "Other Business Expense"];
@@ -27,12 +29,26 @@ exports.handler = async function handler(event) {
 
   try {
     const { result, metrics } = await withSheetsMetrics(async () => {
-    const rows = await getRowsBatch(["Customers", "Jobs", "Expenses"]);
+    const [rows, calendar] = await Promise.all([
+      getRowsBatch(["Customers", "Jobs", "Expenses", "Mileage", "Mileage Rates", "CRM Settings", "Mileage Documents"]),
+      getCalendarStatus(),
+    ]);
     const customerRows = rows.Customers;
     const jobRows = rows.Jobs;
     const customers = customerRows.filter(hasCustomerData).filter((row) => !isArchived(row)).map(customerToClient);
     const jobs = jobRows.filter(hasJobData).filter((row) => !isArchived(row)).map(jobToClient);
     const expenses = rows.Expenses.filter((row) => row["Expense ID"] && !isArchived(row)).map(expenseToClient);
+    const mileage = rows.Mileage.filter((row) => row["Mileage ID"] && !isArchived(row)).map(mileageToClient)
+      .sort((a, b) => `${b.date}${b.createdAt}`.localeCompare(`${a.date}${a.createdAt}`));
+    const defaultMileageRates = [
+      { id: "rate_2026_h1", start: "2026-01-01", end: "2026-06-30", rate: 0.725, source: "IRS standard mileage rate", active: true },
+      { id: "rate_2026_h2", start: "2026-07-01", end: "2026-12-31", rate: 0.76, source: "IRS standard mileage rate", active: true },
+    ];
+    const mileageRateMap = new Map(defaultMileageRates.map((rate) => [rate.id, rate]));
+    rows["Mileage Rates"].filter((row) => row["Rate ID"] && String(row.Active || "TRUE").toUpperCase() !== "FALSE")
+      .forEach((row) => mileageRateMap.set(row["Rate ID"], { id: row["Rate ID"], start: row["Effective Start"], end: row["Effective End"], rate: Number(row["Business Rate"] || 0), source: row.Source, notes: row.Notes, active: true }));
+    const mileageRates = [...mileageRateMap.values()].sort((a, b) => a.start.localeCompare(b.start));
+    const mileageSettings = Object.fromEntries(rows["CRM Settings"].filter((row) => row["Setting Key"]).map((row) => [row["Setting Key"], row["Setting Value"]]));
     const customerById = new Map(customers.map((customer) => [customer.id, customer]));
     const jobById = new Map(jobs.map((job) => [job.id, job]));
     const today = todayDate();
@@ -91,6 +107,11 @@ exports.handler = async function handler(event) {
       })),
       expenseSummary: { total: expenseTotal, categoryTotals },
       expenseCategories: EXPENSE_CATEGORIES,
+      mileage,
+      mileageRates,
+      mileageSettings: { DEFAULT_VEHICLE: "2007 Toyota Tacoma", HOME_OFFICE_QUALIFIED: "FALSE", ...mileageSettings },
+      mileageDocuments: rows["Mileage Documents"].filter((row) => row["Document ID"] && !isArchived(row)).map((row) => ({ id: row["Document ID"], mileageId: row["Mileage ID"], category: row.Category, fileName: row["File Name"], mimeType: row["MIME Type"], googleDriveFileId: row["Google Drive File ID"], googleDriveFileUrl: row["Google Drive File URL"], uploadedAt: row["Uploaded At"] })),
+      calendar,
     };
     });
     return json(200, result, {

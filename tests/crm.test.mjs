@@ -17,6 +17,8 @@ const jobs = require("../netlify/functions/crm-jobs.js");
 const expensesApi = require("../netlify/functions/crm-expenses.js");
 const jobAssetsApi = require("../netlify/functions/crm-job-assets.js");
 const fileApi = require("../netlify/functions/crm-file.js");
+const mileageApi = require("../netlify/functions/crm-mileage.js");
+const calendarApi = require("../netlify/functions/crm-calendar.js");
 const login = require("../netlify/functions/crm-login.js");
 const records = require("../netlify/functions/_shared/crm-records.js");
 const googleSheets = require("../netlify/functions/_shared/google-sheets.js");
@@ -41,6 +43,8 @@ assert.equal((await jobs.handler(unauthEvent)).statusCode, 401, "jobs API must r
 assert.equal((await expensesApi.handler(unauthEvent)).statusCode, 401, "expenses API must reject logged-out visitors");
 assert.equal((await jobAssetsApi.handler(unauthEvent)).statusCode, 401, "job attachment API must reject logged-out visitors");
 assert.equal((await fileApi.handler(unauthEvent)).statusCode, 401, "Drive file proxy must reject logged-out visitors");
+assert.equal((await mileageApi.handler(unauthEvent)).statusCode, 401, "mileage API must reject logged-out visitors");
+assert.equal((await calendarApi.handler(unauthEvent)).statusCode, 401, "Calendar status API must reject logged-out visitors");
 
 const badLogin = await login.handler({
   httpMethod: "POST",
@@ -175,6 +179,16 @@ assert.equal(records.hasJobData({ "Job ID": "job_blank_only", "Customer ID": cus
 assert.equal(records.hasJobData(job), true, "real job sheet rows should be included");
 assert.equal(records.dateDiffDays("2026-08-24", "2026-07-24"), 31);
 
+const odometerMileage = records.mileageFromBody({ date: "2026-03-10", vehicle: "2007 Toyota Tacoma", mileageSource: "Odometer", startingOdometer: "10000", endingOdometer: "10042.5", personalMiles: "2.5", businessPurpose: "Customer service route" }, {}, 0.725);
+const odometerMileageClient = records.mileageToClient(odometerMileage);
+assert.equal(odometerMileageClient.totalMiles, "42.5", "odometer mileage should be calculated from readings");
+assert.equal(odometerMileageClient.businessMiles, "40", "personal miles should be excluded from eligible business miles");
+assert.equal(odometerMileageClient.potentialDeduction, "29.00", "the date-effective mileage rate should calculate the potential deduction");
+const reconstructedMileage = records.mileageFromBody({ date: "2026-08-10", mileageSource: "Reconstructed", totalMiles: "20", personalMiles: "0" }, {}, 0.76);
+assert.equal(reconstructedMileage["Review Status"], "Needs Review", "reconstructed mileage should be clearly flagged for review");
+assert.equal(reconstructedMileage["Starting Odometer"], "", "reconstructed mileage must not be presented as an actual odometer record");
+assert.throws(() => records.mileageFromBody({ mileageSource: "Odometer", startingOdometer: "200", endingOdometer: "199" }, {}, 0.725), /cannot be lower/, "invalid odometer sequences must be rejected");
+
 const expense = records.expenseFromBody({
   date: "2026-08-26",
   vendor: "Home Depot",
@@ -202,6 +216,10 @@ assert.equal(clearedJob["Signed Work Order File ID"], "", "signed Work Order met
 
 assert.ok(schema.tabs.Expenses.includes("Google Drive File ID"), "Expenses tab should store Drive metadata, not file bytes");
 assert.ok(schema.tabs.Jobs.includes("Signed Work Order File ID"), "Jobs should be extended instead of adding a duplicate Work Orders table");
+assert.ok(schema.tabs.Jobs.includes("Calendar Event ID"), "Jobs should persist one Google Calendar event ID");
+assert.ok(schema.tabs.Mileage.includes("Eligible Business Miles"), "Mileage should keep eligible business miles separate");
+assert.ok(schema.tabs.Mileage.includes("Personal or Nonqualifying Miles"), "Mileage should retain nonqualifying mileage for annual business-use reporting");
+assert.deepEqual(schema.tabs["Mileage Rates"].slice(1, 4), ["Effective Start", "Effective End", "Business Rate"], "mileage rates should be date-effective and configurable");
 assert.deepEqual(schema.tabs.Jobs.slice(schema.tabs.Jobs.indexOf("Taxable"), schema.tabs.Jobs.indexOf("Taxable") + 4), ["Taxable", "Subtotal", "Sales Tax", "Total Amount"], "Jobs should store tax fields separately");
 assert.ok(!schema.tabs.Expenses.some((header) => /base64|binary/i.test(header)), "Sheets must not contain raw file columns");
 assert.equal(googleDrive.expenseFileName({ date: "2026-08-26", vendor: "Home Depot", total: "187.42", customerName: "Smith", originalName: "receipt.JPG" }), "2026-08-26_Smith_Home-Depot_187.42.jpg");
@@ -219,6 +237,10 @@ globalThis.fetch = async (url, options = {}) => {
         { values: [schema.tabs.Customers] },
         { values: [schema.tabs.Jobs] },
         { values: [schema.tabs.Expenses] },
+        { values: [schema.tabs.Mileage] },
+        { values: [schema.tabs["Mileage Rates"]] },
+        { values: [schema.tabs["CRM Settings"]] },
+        { values: [schema.tabs["Mileage Documents"]] },
       ],
     }), { status: 200, headers: { "content-type": "application/json" } });
   }
@@ -283,8 +305,9 @@ globalThis.fetch = async (url, options = {}) => {
 };
 await googleSheets.appendRecord("Jobs", taxableJob);
 assert.equal(columnExpansionRequest.requests[0].appendDimension.dimension, "COLUMNS", "the existing Jobs tab should be widened before tax headers are appended");
-assert.equal(columnExpansionRequest.requests[0].appendDimension.length, 3, "a 26-column Jobs grid should be expanded through column AC");
-assert.deepEqual(migratedHeaderRow.slice(-4), ["Taxable", "Subtotal", "Sales Tax", "Total Amount"], "tax headers should be appended without moving existing columns");
+assert.equal(columnExpansionRequest.requests[0].appendDimension.length, schema.tabs.Jobs.length - 26, "the Jobs grid should expand for every appended field");
+assert.deepEqual(migratedHeaderRow.slice(-4), ["Taxable", "Subtotal", "Sales Tax", "Total Amount"], "tax fields should be appended without moving existing columns");
+assert.ok(migratedHeaderRow.includes("Calendar Event ID"), "Jobs should retain the Calendar event identifier field during schema migration");
 globalThis.fetch = defaultSheetsMock;
 
 const standardSheetsFetch = globalThis.fetch;
@@ -351,6 +374,14 @@ assert.match(adminAppSource, /job\.paymentStatus === "Paid"/, "sales tax reporti
 assert.match(adminAppSource, /job\.jobStatus === "Completed"/, "sales tax reporting should include only completed work orders");
 assert.match(adminAppSource, /Completed revenue \(before tax\)/, "dashboard revenue should exclude collected sales tax");
 assert.doesNotMatch(adminAppSource, /setInterval\s*\(/, "the CRM should not poll Google Sheets");
+assert.match(adminAppSource, /function renderMileage\(/, "the CRM should include a dedicated Mileage Tracker screen");
+assert.match(adminAppSource, /Potential deductions are estimates/, "mileage deductions must be described as estimates rather than guaranteed savings");
+assert.match(adminAppSource, /data-log-mileage=/, "completed jobs should offer a Log Mileage action");
+
+const calendarBridgeSource = readFileSync(new URL("../tools/google-drive-upload-bridge.gs", import.meta.url), "utf8");
+assert.match(calendarBridgeSource, /setTag\("crmJobId"/, "Calendar events should store the CRM Job ID for duplicate prevention");
+assert.match(calendarBridgeSource, /sendInvites:\s*false/, "Calendar synchronization must not send customer invitations");
+assert.match(calendarBridgeSource, /LockService\.getScriptLock\(\)/, "Calendar synchronization should serialize concurrent writes");
 
 process.env.GOOGLE_DRIVE_CRM_FOLDER_ID = "root_folder";
 process.env.GOOGLE_DRIVE_WEB_APP_URL = "https://script.google.test/exec";

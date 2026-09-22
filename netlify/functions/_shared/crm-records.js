@@ -53,6 +53,11 @@ const recordFieldAliases = {
   "Signed Work Order URL": ["Signed Work Order URL"],
   "Signed Work Order File Name": ["Signed Work Order File Name"],
   "Signed Work Order Uploaded At": ["Signed Work Order Uploaded At"],
+  "Estimated Duration Minutes": ["Estimated Duration Minutes", "Duration Minutes"],
+  "Calendar Event ID": ["Calendar Event ID", "Google Calendar Event ID"],
+  "Calendar Sync Status": ["Calendar Sync Status"],
+  "Calendar Last Synced At": ["Calendar Last Synced At"],
+  "Calendar Sync Error": ["Calendar Sync Error"],
   "Created At": ["Created At"],
   "Updated At": ["Updated At"],
   Archived: ["Archived", "Archive"],
@@ -264,6 +269,11 @@ function jobFromBody(body, existing = {}) {
     "Signed Work Order URL": bodyField("signedWorkOrderUrl", "Signed Work Order URL"),
     "Signed Work Order File Name": bodyField("signedWorkOrderFileName", "Signed Work Order File Name"),
     "Signed Work Order Uploaded At": bodyField("signedWorkOrderUploadedAt", "Signed Work Order Uploaded At"),
+    "Estimated Duration Minutes": bodyField("estimatedDurationMinutes", "Estimated Duration Minutes") || "60",
+    "Calendar Event ID": bodyField("calendarEventId", "Calendar Event ID"),
+    "Calendar Sync Status": bodyField("calendarSyncStatus", "Calendar Sync Status"),
+    "Calendar Last Synced At": bodyField("calendarLastSyncedAt", "Calendar Last Synced At"),
+    "Calendar Sync Error": bodyField("calendarSyncError", "Calendar Sync Error"),
     "Created At": existing["Created At"] || timestamp,
     "Updated At": timestamp,
     Archived: clean(body.archived || body.Archived || existing.Archived || "FALSE"),
@@ -301,6 +311,11 @@ function jobToClient(record) {
     signedWorkOrderUrl: readRecordValue(record, "Signed Work Order URL"),
     signedWorkOrderFileName: readRecordValue(record, "Signed Work Order File Name"),
     signedWorkOrderUploadedAt: readRecordValue(record, "Signed Work Order Uploaded At"),
+    estimatedDurationMinutes: readRecordValue(record, "Estimated Duration Minutes") || "60",
+    calendarEventId: readRecordValue(record, "Calendar Event ID"),
+    calendarSyncStatus: readRecordValue(record, "Calendar Sync Status"),
+    calendarLastSyncedAt: readRecordValue(record, "Calendar Last Synced At"),
+    calendarSyncError: readRecordValue(record, "Calendar Sync Error"),
     createdAt: readRecordValue(record, "Created At"),
     updatedAt: readRecordValue(record, "Updated At"),
   };
@@ -402,6 +417,86 @@ function documentToClient(record) {
   };
 }
 
+function mileageFromBody(body, existing = {}, rate = 0) {
+  const timestamp = nowIso();
+  const value = (camelName, sheetName) => Object.prototype.hasOwnProperty.call(body, camelName)
+    ? clean(body[camelName])
+    : Object.prototype.hasOwnProperty.call(body, sheetName)
+      ? clean(body[sheetName])
+      : clean(existing[sheetName]);
+  const date = value("date", "Date") || todayDate();
+  const source = value("mileageSource", "Mileage Source") || "Odometer";
+  const startText = value("startingOdometer", "Starting Odometer");
+  const endText = value("endingOdometer", "Ending Odometer");
+  const manualTotal = value("totalMiles", "Total Miles");
+  const personalText = value("personalMiles", "Personal or Nonqualifying Miles") || "0";
+  const numberOrError = (text, label, required = false) => {
+    if (text === "" && !required) return null;
+    const result = Number(text);
+    if (!Number.isFinite(result) || result < 0) {
+      const error = new Error(`${label} must be a non-negative number.`);
+      error.statusCode = 400;
+      throw error;
+    }
+    return result;
+  };
+  const start = numberOrError(startText, "Starting odometer", source === "Odometer");
+  const end = numberOrError(endText, "Ending odometer", source === "Odometer");
+  if (start !== null && end !== null && end < start) {
+    const error = new Error("Ending odometer cannot be lower than starting odometer.");
+    error.statusCode = 400;
+    throw error;
+  }
+  const total = source === "Odometer" ? roundMoney(end - start) : roundMoney(numberOrError(manualTotal, "Total miles", true));
+  const personal = roundMoney(numberOrError(personalText, "Personal or nonqualifying miles", true));
+  if (personal > total) {
+    const error = new Error("Personal or nonqualifying miles cannot exceed total miles.");
+    error.statusCode = 400;
+    throw error;
+  }
+  const business = roundMoney(total - personal);
+  const appliedRate = Number(rate || value("irsRate", "IRS Rate") || 0);
+  return {
+    ...existing,
+    "Mileage ID": existing["Mileage ID"] || body.mileageId || id("mil"),
+    Date: date,
+    Vehicle: value("vehicle", "Vehicle") || "2007 Toyota Tacoma",
+    "Entry Type": value("entryType", "Entry Type") || "Day Route",
+    "Starting Odometer": start === null ? "" : String(start),
+    "Ending Odometer": end === null ? "" : String(end),
+    "Total Miles": String(total),
+    "Personal or Nonqualifying Miles": String(personal),
+    "Eligible Business Miles": String(business),
+    "Starting Location": value("startingLocation", "Starting Location"),
+    Destinations: value("destinations", "Destinations"),
+    "Business Purpose": value("businessPurpose", "Business Purpose"),
+    "Mileage Source": source,
+    "Review Status": value("reviewStatus", "Review Status") || (source === "Odometer" ? "Reviewed" : "Needs Review"),
+    "Customer ID": value("customerId", "Customer ID"),
+    "Job ID": value("jobId", "Job ID"),
+    "IRS Rate": String(appliedRate),
+    "Potential Deduction": moneyString(business * appliedRate),
+    "Home Office Qualified": value("homeOfficeQualified", "Home Office Qualified") || "FALSE",
+    "Parking and Tolls": moneyString(value("parkingAndTolls", "Parking and Tolls") || 0),
+    Notes: value("notes", "Notes"),
+    "Created At": existing["Created At"] || timestamp,
+    "Updated At": timestamp,
+    Archived: value("archived", "Archived") || "FALSE",
+  };
+}
+
+function mileageToClient(record) {
+  return {
+    id: readRecordValue(record, "Mileage ID"), date: readRecordValue(record, "Date"), vehicle: readRecordValue(record, "Vehicle"),
+    entryType: readRecordValue(record, "Entry Type"), startingOdometer: readRecordValue(record, "Starting Odometer"), endingOdometer: readRecordValue(record, "Ending Odometer"),
+    totalMiles: readRecordValue(record, "Total Miles"), personalMiles: readRecordValue(record, "Personal or Nonqualifying Miles"), businessMiles: readRecordValue(record, "Eligible Business Miles"),
+    startingLocation: readRecordValue(record, "Starting Location"), destinations: readRecordValue(record, "Destinations"), businessPurpose: readRecordValue(record, "Business Purpose"),
+    mileageSource: readRecordValue(record, "Mileage Source"), reviewStatus: readRecordValue(record, "Review Status"), customerId: readRecordValue(record, "Customer ID"), jobId: readRecordValue(record, "Job ID"),
+    irsRate: readRecordValue(record, "IRS Rate"), potentialDeduction: readRecordValue(record, "Potential Deduction"), homeOfficeQualified: readRecordValue(record, "Home Office Qualified") === "TRUE",
+    parkingAndTolls: readRecordValue(record, "Parking and Tolls"), notes: readRecordValue(record, "Notes"), createdAt: readRecordValue(record, "Created At"), updatedAt: readRecordValue(record, "Updated At"),
+  };
+}
+
 module.exports = {
   NJ_SALES_TAX_RATE,
   calculateJobAmounts,
@@ -418,6 +513,8 @@ module.exports = {
   isArchived,
   jobFromBody,
   jobToClient,
+  mileageFromBody,
+  mileageToClient,
   nowIso,
   photoToClient,
   readRecordValue,

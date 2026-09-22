@@ -48,6 +48,11 @@
       "Signed Work Order URL",
       "Signed Work Order File Name",
       "Signed Work Order Uploaded At",
+      "Estimated Duration Minutes",
+      "Calendar Event ID",
+      "Calendar Sync Status",
+      "Calendar Last Synced At",
+      "Calendar Sync Error",
       "Created At",
       "Updated At",
       "Archived"
@@ -143,6 +148,59 @@
       "Google Drive File URL",
       "Uploaded At",
       "Archived"
+    ],
+    "Mileage": [
+      "Mileage ID",
+      "Date",
+      "Vehicle",
+      "Entry Type",
+      "Starting Odometer",
+      "Ending Odometer",
+      "Total Miles",
+      "Personal or Nonqualifying Miles",
+      "Eligible Business Miles",
+      "Starting Location",
+      "Destinations",
+      "Business Purpose",
+      "Mileage Source",
+      "Review Status",
+      "Customer ID",
+      "Job ID",
+      "IRS Rate",
+      "Potential Deduction",
+      "Home Office Qualified",
+      "Parking and Tolls",
+      "Notes",
+      "Created At",
+      "Updated At",
+      "Archived"
+    ],
+    "Mileage Documents": [
+      "Document ID",
+      "Mileage ID",
+      "Category",
+      "File Name",
+      "MIME Type",
+      "Google Drive File ID",
+      "Google Drive File URL",
+      "Uploaded At",
+      "Archived"
+    ],
+    "Mileage Rates": [
+      "Rate ID",
+      "Effective Start",
+      "Effective End",
+      "Business Rate",
+      "Source",
+      "Notes",
+      "Active",
+      "Updated At"
+    ],
+    "CRM Settings": [
+      "Setting Key",
+      "Setting Value",
+      "Description",
+      "Updated At"
     ]
   },
   "starterServices": [

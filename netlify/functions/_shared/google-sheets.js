@@ -123,7 +123,7 @@ function rowHasAnyValue(row = []) {
 }
 
 function getRecordIdPrefix(tabName) {
-  return ({ Customers: "cus_", Jobs: "job_", Reminders: "rem_", Leads: "lead_", Services: "svc_", Expenses: "exp_", "Job Photos": "photo_", "Job Documents": "doc_" })[tabName] || "";
+  return ({ Customers: "cus_", Jobs: "job_", Reminders: "rem_", Leads: "lead_", Services: "svc_", Expenses: "exp_", "Job Photos": "photo_", "Job Documents": "doc_", Mileage: "mil_", "Mileage Documents": "mdoc_", "Mileage Rates": "rate_" })[tabName] || "";
 }
 
 function findShiftedRecordStart(row = [], tabName) {
