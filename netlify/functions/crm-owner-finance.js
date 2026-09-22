@@ -23,6 +23,13 @@ async function attachDocument(body, record) {
   const uploaded = await uploadFile({ file: body.file, parentId: folder.id, fileName: safeName(`${record.Date}_${record["Transaction Type"]}_${record.Amount}_${body.file.name}`) });
   return { ...record, "Document File Name": uploaded.name, "Document MIME Type": uploaded.mimeType, "Google Drive File ID": uploaded.id, "Google Drive File URL": uploaded.url };
 }
+async function attachPersonalPurchaseReceipt(body, record) {
+  if (!body.file) return record;
+  const year = String(record.Date || new Date().getFullYear()).slice(0, 4);
+  const folder = await folderPath(["Receipts", year, "Personal Funds"]);
+  const uploaded = await uploadFile({ file: body.file, parentId: folder.id, fileName: safeName(`${record.Date}_${record.Vendor}_${record["Total Amount"]}_${body.file.name}`) });
+  return { ...record, "Receipt File Name": uploaded.name, "Receipt MIME Type": uploaded.mimeType || body.file.type, "Google Drive File ID": uploaded.id, "Google Drive File URL": uploaded.url };
+}
 
 exports.handler = async function handler(event) {
   const auth = requireSession(event); if (auth.response) return auth.response;
@@ -59,7 +66,8 @@ exports.handler = async function handler(event) {
         await audit("Owner Finance Settings", "owner-finance", "Updated", {}, body, auth.email); return { ok: true };
       }
       if (event.httpMethod === "POST" && body.entity === "personalPurchase") {
-        const expense = expenseFromBody({ ...body, paymentSource: "Personal Funds", ownerFundingTreatment: body.ownerFundingTreatment, reimbursementStatus: body.reimbursementStatus || (body.ownerFundingTreatment === "Awaiting Reimbursement" ? "Awaiting Reimbursement" : "Not Applicable") });
+        let expense = expenseFromBody({ ...body, paymentSource: "Personal Funds", ownerFundingTreatment: body.ownerFundingTreatment, reimbursementStatus: body.reimbursementStatus || (body.ownerFundingTreatment === "Awaiting Reimbursement" ? "Awaiting Reimbursement" : "Not Applicable") });
+        expense = await attachPersonalPurchaseReceipt(body, expense);
         await appendRecord("Expenses", expense); await audit("Expense", expense["Expense ID"], "Personally Paid Business Expense Created", {}, expense, auth.email);
         return { expense: expenseToClient(expense) };
       }
