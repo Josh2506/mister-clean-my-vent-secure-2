@@ -13,6 +13,12 @@ const state = {
   selectedJob: null,
   dashboardMonth: "",
   taxYear: "",
+  mileage: [],
+  mileageRates: [],
+  mileageSettings: { DEFAULT_VEHICLE: "2007 Toyota Tacoma", HOME_OFFICE_QUALIFIED: "FALSE" },
+  mileageDocuments: [],
+  mileageYear: "",
+  calendar: { connected: false },
 };
 
 const defaultExpenseCategories = [
@@ -159,6 +165,7 @@ function shell() {
         <button type="button" data-screen="due">Due Soon</button>
         <button type="button" data-screen="expenses">Expenses</button>
         <button type="button" data-screen="sales-tax">Sales Tax</button>
+        <button type="button" data-screen="mileage">Mileage</button>
         <button type="button" data-screen="profile">Profile</button>
       </nav>
       <div class="crm-toast" id="crm-toast" role="status" aria-live="polite"></div>
@@ -168,11 +175,13 @@ function shell() {
         <section id="screen-due" class="crm-screen"></section>
         <section id="screen-expenses" class="crm-screen"></section>
         <section id="screen-sales-tax" class="crm-screen"></section>
+        <section id="screen-mileage" class="crm-screen"></section>
         <section id="screen-profile" class="crm-screen"></section>
       </div>
       <div class="crm-modal" id="customer-modal" aria-hidden="true"></div>
       <div class="crm-modal" id="job-modal" aria-hidden="true"></div>
       <div class="crm-modal" id="expense-modal" aria-hidden="true"></div>
+      <div class="crm-modal" id="mileage-modal" aria-hidden="true"></div>
       <div class="crm-modal" id="asset-modal" aria-hidden="true"></div>
       <div class="crm-modal" id="preview-modal" aria-hidden="true"></div>
     </section>
@@ -481,6 +490,10 @@ function renderDashboard() {
         <h2>Unpaid or Partially Paid</h2>
         <div class="crm-list">${renderJobCards(dashboard.unpaidJobs, true)}</div>
       </section>
+      <section class="crm-panel crm-col-12 crm-calendar-status">
+        <div class="crm-panel-heading"><div><h2>Google Calendar</h2><p>${state.calendar.connected ? `Connected to ${escapeHtml(state.calendar.name || "business calendar")} · ${escapeHtml(state.calendar.timeZone || "America/New_York")}` : `Not connected${state.calendar.error ? ` · ${escapeHtml(state.calendar.error)}` : ""}`}</p></div><button class="crm-btn secondary" id="calendar-test" type="button">Test Calendar Connection</button></div>
+        <p><strong>Status:</strong> ${state.calendar.connected ? "Connected" : "Needs setup"} · <strong>Last successful sync:</strong> ${escapeHtml(state.calendar.lastSync || "None yet")}</p>
+      </section>
     </div>
   `;
   document.querySelector("#add-work-order-button").addEventListener("click", openWorkOrderPicker);
@@ -490,6 +503,11 @@ function renderDashboard() {
   document.querySelector("#dashboard-month").addEventListener("change", (event) => {
     state.dashboardMonth = event.target.value;
     renderDashboard();
+  });
+  document.querySelector("#calendar-test").addEventListener("click", async (event) => {
+    const button = event.currentTarget; button.disabled = true; button.textContent = "Testing...";
+    try { const result = await api("/api/crm/calendar", { method: "POST", body: "{}" }); state.calendar = result.calendar; renderDashboard(); showNotice("Google Calendar connection and write access verified."); }
+    catch (error) { showNotice(error.message, "error"); button.disabled = false; button.textContent = "Test Calendar Connection"; }
   });
   bindJobButtons(document.querySelector("#screen-dashboard"));
 }
@@ -582,6 +600,85 @@ function renderSalesTax() {
   screen.querySelector("#sales-tax-year").addEventListener("change", (event) => {
     state.taxYear = event.target.value;
     renderSalesTax();
+  });
+}
+
+function mileageYears() {
+  const current = String(state.dashboard?.today || todayIso()).slice(0, 4);
+  return [...new Set([current, ...state.mileage.map((entry) => String(entry.date || "").slice(0, 4)).filter((year) => /^\d{4}$/.test(year))])].sort().reverse();
+}
+
+function mileageSummary(entries) {
+  const totals = entries.reduce((summary, entry) => {
+    summary.total += Number(entry.totalMiles || 0); summary.business += Number(entry.businessMiles || 0); summary.personal += Number(entry.personalMiles || 0);
+    summary.deduction += Number(entry.potentialDeduction || 0); summary.parking += Number(entry.parkingAndTolls || 0); return summary;
+  }, { total: 0, business: 0, personal: 0, deduction: 0, parking: 0 });
+  const odometer = entries.filter((entry) => entry.startingOdometer !== "" && entry.endingOdometer !== "").sort((a, b) => a.date.localeCompare(b.date));
+  totals.startOdometer = odometer[0]?.startingOdometer || "—";
+  totals.endOdometer = odometer[odometer.length - 1]?.endingOdometer || "—";
+  totals.businessUse = totals.total ? (totals.business / totals.total) * 100 : 0;
+  return totals;
+}
+
+function mileagePeriodEntries(period) {
+  const now = new Date(`${state.dashboard?.today || todayIso()}T12:00:00`);
+  const year = state.mileageYear || String(now.getFullYear());
+  const yearEntries = state.mileage.filter((entry) => String(entry.date).startsWith(`${year}-`));
+  if (period === "year") return yearEntries;
+  if (period === "month") return yearEntries.filter((entry) => String(entry.date).slice(0, 7) === `${year}-${String(now.getMonth() + 1).padStart(2, "0")}`);
+  const day = now.getDay(); const monday = new Date(now); monday.setDate(now.getDate() - ((day + 6) % 7));
+  const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+  const iso = (date) => date.toISOString().slice(0, 10);
+  return yearEntries.filter((entry) => entry.date >= iso(monday) && entry.date <= iso(sunday));
+}
+
+function exportMileageCsv() {
+  const entries = mileagePeriodEntries("year");
+  const columns = ["Date", "Vehicle", "Entry Type", "Starting Odometer", "Ending Odometer", "Total Miles", "Personal/Nonqualifying Miles", "Eligible Business Miles", "Starting Location", "Destinations", "Business Purpose", "Source", "Review Status", "IRS Rate", "Potential Deduction", "Parking and Tolls", "Notes"];
+  const values = entries.map((entry) => [entry.date, entry.vehicle, entry.entryType, entry.startingOdometer, entry.endingOdometer, entry.totalMiles, entry.personalMiles, entry.businessMiles, entry.startingLocation, entry.destinations, entry.businessPurpose, entry.mileageSource, entry.reviewStatus, entry.irsRate, entry.potentialDeduction, entry.parkingAndTolls, entry.notes]);
+  const csv = [columns, ...values].map((row) => row.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); const link = document.createElement("a"); link.href = url; link.download = `Mister-Clean-My-Vent-Mileage-${state.mileageYear}.csv`; link.click(); URL.revokeObjectURL(url);
+}
+
+function renderMileage() {
+  const screen = document.querySelector("#screen-mileage"); if (!screen) return;
+  const years = mileageYears(); if (!state.mileageYear || !years.includes(state.mileageYear)) state.mileageYear = years[0];
+  const yearEntries = mileagePeriodEntries("year"); const year = mileageSummary(yearEntries); const month = mileageSummary(mileagePeriodEntries("month")); const week = mileageSummary(mileagePeriodEntries("week"));
+  const rates = state.mileageRates || [];
+  screen.innerHTML = `<div class="crm-page-title"><h1>Mileage Tracker</h1><p>Business mileage records for the 2007 Toyota Tacoma, with review flags and supporting Drive documents.</p><div class="crm-actions"><button class="crm-btn" id="mileage-add" type="button">Log Mileage</button><button class="crm-btn secondary" id="mileage-export" type="button">Export CSV</button><button class="crm-btn secondary" id="mileage-print" type="button">Print / Save PDF</button></div></div>
+    <section class="crm-panel"><div class="crm-panel-heading"><div><h2>${escapeHtml(state.mileageYear)} Mileage Summary</h2><p>Potential deductions are estimates based on eligible business miles and the configured IRS rate—not guaranteed tax savings.</p></div><div class="crm-field crm-month-picker"><label for="mileage-year">Year</label><select id="mileage-year">${years.map((value) => `<option ${value === state.mileageYear ? "selected" : ""}>${value}</option>`).join("")}</select></div></div>
+      <div class="crm-stats crm-mileage-stats"><div class="crm-stat"><strong>${year.business.toFixed(1)}</strong><span>Business miles this year</span></div><div class="crm-stat"><strong>${month.business.toFixed(1)}</strong><span>Business miles this month</span></div><div class="crm-stat"><strong>${week.business.toFixed(1)}</strong><span>Business miles this week</span></div><div class="crm-stat"><strong>${formatMoney(year.deduction)}</strong><span>Potential mileage deduction</span></div><div class="crm-stat"><strong>${year.personal.toFixed(1)}</strong><span>Personal / nonqualifying</span></div><div class="crm-stat"><strong>${year.total.toFixed(1)}</strong><span>Total annual miles logged</span></div><div class="crm-stat"><strong>${year.startOdometer}</strong><span>Annual starting odometer</span></div><div class="crm-stat"><strong>${year.endOdometer}</strong><span>Annual ending odometer</span></div><div class="crm-stat"><strong>${year.businessUse.toFixed(1)}%</strong><span>Business-use percentage</span></div><div class="crm-stat"><strong>${formatMoney(year.parking)}</strong><span>Parking & tolls (separate)</span></div></div>
+    </section>
+    <section class="crm-panel"><div class="crm-panel-heading"><div><h2>Mileage Rate Table</h2><p>Rates are date-based and configurable. Parking and tolls remain separate so they are not double counted.</p></div></div><div class="crm-list">${rates.map((rate) => `<article class="crm-card"><h3>${escapeHtml(rate.start)} through ${escapeHtml(rate.end)}</h3><p><strong>${Number(rate.rate).toFixed(3)} per mile</strong> · ${escapeHtml(rate.source || "Configured rate")}</p><button class="crm-btn secondary" data-edit-mileage-rate="${escapeHtml(rate.id)}" type="button">Edit Rate</button></article>`).join("")}</div><label class="crm-setting"><input id="home-office-qualified" type="checkbox" ${String(state.mileageSettings.HOME_OFFICE_QUALIFIED).toUpperCase() === "TRUE" ? "checked" : ""}> Home office is currently documented as qualifying</label><p class="crm-help">This setting records your current position; it does not automatically treat the first or last trip of the day as deductible. Uncertain trips should be marked Needs Review.</p></section>
+    <section class="crm-panel crm-mileage-report" id="mileage-report"><h2>Annual Mileage Log</h2><div class="crm-list">${yearEntries.length ? yearEntries.map((entry) => `<article class="crm-card"><div class="crm-panel-heading"><div><h3>${escapeHtml(formatDisplayDate(entry.date))} · ${escapeHtml(entry.businessPurpose || "Business travel")}</h3><p>${escapeHtml(entry.startingLocation || "Start not listed")} → ${escapeHtml(entry.destinations || "Destination not listed")}</p></div><span class="crm-badge ${entry.reviewStatus === "Needs Review" ? "warning" : "success"}">${escapeHtml(entry.reviewStatus)}</span></div><p><strong>${Number(entry.businessMiles || 0).toFixed(1)} business</strong> of ${Number(entry.totalMiles || 0).toFixed(1)} total miles · ${escapeHtml(entry.mileageSource)}${entry.mileageSource === "Reconstructed" ? " (not an odometer record)" : ""}</p><p>Potential deduction: ${formatMoney(entry.potentialDeduction)} · Parking/tolls: ${formatMoney(entry.parkingAndTolls)}</p><div class="crm-actions"><button class="crm-btn warning" data-edit-mileage="${escapeHtml(entry.id)}" type="button">Edit</button><button class="crm-btn danger" data-delete-mileage="${escapeHtml(entry.id)}" type="button">Delete</button>${state.mileageDocuments.filter((doc) => doc.mileageId === entry.id).map((doc) => `<button class="crm-btn secondary" data-view-file="${escapeHtml(doc.googleDriveFileId)}" type="button">${escapeHtml(doc.fileName)}</button>`).join("")}</div></article>`).join("") : `<div class="crm-empty">No mileage has been logged for ${escapeHtml(state.mileageYear)}.</div>`}</div></section>`;
+  screen.querySelector("#mileage-add").addEventListener("click", () => openMileageModal());
+  screen.querySelector("#mileage-export").addEventListener("click", exportMileageCsv);
+  screen.querySelector("#mileage-print").addEventListener("click", () => { document.body.classList.add("printing-mileage"); window.print(); window.setTimeout(() => document.body.classList.remove("printing-mileage"), 500); });
+  screen.querySelector("#mileage-year").addEventListener("change", (event) => { state.mileageYear = event.target.value; renderMileage(); });
+  screen.querySelector("#home-office-qualified").addEventListener("change", async (event) => { const value = event.target.checked ? "TRUE" : "FALSE"; await api("/api/crm/mileage", { method: "POST", body: JSON.stringify({ action: "saveSetting", key: "HOME_OFFICE_QUALIFIED", value, description: "Whether a qualifying home office is currently documented." }) }); state.mileageSettings.HOME_OFFICE_QUALIFIED = value; showNotice("Home-office qualification setting saved."); });
+  screen.querySelectorAll("[data-edit-mileage]").forEach((button) => button.addEventListener("click", () => openMileageModal(state.mileage.find((entry) => entry.id === button.dataset.editMileage))));
+  screen.querySelectorAll("[data-delete-mileage]").forEach((button) => button.addEventListener("click", async () => { if (!confirm("Delete this mileage entry? The spreadsheet row will be archived.")) return; await api(`/api/crm/mileage?id=${encodeURIComponent(button.dataset.deleteMileage)}`, { method: "DELETE" }); state.mileage = state.mileage.filter((entry) => entry.id !== button.dataset.deleteMileage); renderMileage(); showNotice("Mileage entry removed."); }));
+  screen.querySelectorAll("[data-view-file]").forEach((button) => button.addEventListener("click", () => openFilePreview(button.dataset.viewFile, "Mileage document")));
+  screen.querySelectorAll("[data-edit-mileage-rate]").forEach((button) => button.addEventListener("click", async () => { const rate = rates.find((item) => item.id === button.dataset.editMileageRate); const value = prompt(`Mileage rate per mile for ${rate.start} through ${rate.end}:`, rate.rate); if (value === null) return; const amount = Number(value); if (!Number.isFinite(amount) || amount < 0) return showNotice("Enter a valid rate.", "error"); const result = await api("/api/crm/mileage", { method: "POST", body: JSON.stringify({ action: "saveRate", ...rate, rate: amount }) }); state.mileageRates = rates.map((item) => item.id === rate.id ? result.rate : item); renderMileage(); showNotice("Mileage rate updated."); }));
+}
+
+function openMileageModal(entry = null, presetJob = null) {
+  const modal = document.querySelector("#mileage-modal"); const job = presetJob || jobById(entry?.jobId); const customer = customerById(job?.customerId || entry?.customerId);
+  modal.classList.add("open"); modal.setAttribute("aria-hidden", "false"); modal.innerHTML = `<form class="crm-modal-card" id="mileage-form" role="dialog" aria-modal="true"><h2>${entry ? "Edit Mileage" : "Log Mileage"}</h2><input type="hidden" name="mileageId" value="${escapeHtml(entry?.id || "")}"><input type="hidden" name="customerId" value="${escapeHtml(customer?.id || "")}"><input type="hidden" name="jobId" value="${escapeHtml(job?.id || "")}"><div class="crm-form-grid">
+    ${field("Date", "date", entry?.date || job?.dateCompleted || job?.appointmentDate || todayIso(), true, "date")}${field("Vehicle", "vehicle", entry?.vehicle || state.mileageSettings.DEFAULT_VEHICLE || "2007 Toyota Tacoma", true)}
+    ${selectField("Entry Type", "entryType", entry?.entryType || "Day Route", ["Trip", "Day Route"])}${selectField("Mileage Source", "mileageSource", entry?.mileageSource || "Odometer", ["Odometer", "GPS", "Reconstructed", "Manual"])}
+    ${field("Starting Odometer", "startingOdometer", entry?.startingOdometer || "", false, "number")}${field("Ending Odometer", "endingOdometer", entry?.endingOdometer || "", false, "number")}${field("Total Miles (GPS / reconstructed / manual)", "totalMiles", entry?.totalMiles || "", false, "number")}${field("Personal or Nonqualifying Miles", "personalMiles", entry?.personalMiles || "0", true, "number")}
+    ${field("Starting Location", "startingLocation", entry?.startingLocation || "")}${field("Locations / Destinations", "destinations", entry?.destinations || (customer ? [customer.streetAddress, customer.city, customer.state].filter(Boolean).join(", ") : ""))}
+    ${field("Business Purpose", "businessPurpose", entry?.businessPurpose || (job ? `${job.serviceType} for ${customer?.name || "customer"}` : ""), true, "text", "full")}${selectField("Review Status", "reviewStatus", entry?.reviewStatus || (entry?.mileageSource === "Reconstructed" ? "Needs Review" : "Reviewed"), ["Reviewed", "Needs Review", "Nonqualifying"])}
+    ${field("Parking and Tolls (Separate)", "parkingAndTolls", entry?.parkingAndTolls || "0", false, "number")}${textareaField("Notes", "notes", entry?.notes || "")}
+    <div class="crm-field full"><label for="mileageFile">Supporting Document (Optional)</label><label class="crm-upload-button" for="mileageFile">Take Photo / Upload Supporting File</label><input class="crm-file-input" id="mileageFile" type="file" accept="image/*,.pdf,.heic,.heif"><small>GPS screenshot, route documentation, receipt, or other support. Reconstructed mileage remains clearly labeled.</small></div>
+    <div class="crm-field full crm-help" id="mileage-calculation"></div></div><div class="crm-actions"><button class="crm-btn" type="submit">Save Mileage</button><button class="crm-btn secondary" data-close-modal type="button">Cancel</button></div><p class="crm-status" id="mileage-status"></p></form>`;
+  setModalLock(); const form = modal.querySelector("#mileage-form"); bindMobileInputFocus(form); modal.querySelector("[data-close-modal]").addEventListener("click", () => closeModal(modal));
+  const preview = () => { const source = form.elements.mileageSource.value; const start = Number(form.elements.startingOdometer.value || 0); const end = Number(form.elements.endingOdometer.value || 0); const total = source === "Odometer" ? Math.max(0, end - start) : Number(form.elements.totalMiles.value || 0); const personal = Number(form.elements.personalMiles.value || 0); const business = Math.max(0, total - personal); form.querySelector("#mileage-calculation").textContent = `${total.toFixed(1)} total miles · ${business.toFixed(1)} eligible business miles. ${source === "Reconstructed" ? "Reconstructed estimate—not an actual odometer reading." : ""}`; };
+  ["mileageSource", "startingOdometer", "endingOdometer", "totalMiles", "personalMiles"].forEach((name) => form.elements[name].addEventListener("input", preview)); preview();
+  form.addEventListener("submit", async (event) => { event.preventDefault(); const status = form.querySelector("#mileage-status"); const submit = form.querySelector("button[type='submit']"); submit.disabled = true; status.textContent = "Saving mileage...";
+    try { const body = Object.fromEntries(new FormData(form)); const saved = await api("/api/crm/mileage", { method: entry ? "PUT" : "POST", body: JSON.stringify(body) }); const index = state.mileage.findIndex((item) => item.id === saved.mileage.id); if (index >= 0) state.mileage[index] = saved.mileage; else state.mileage.unshift(saved.mileage); const file = form.querySelector("#mileageFile").files[0]; if (file) { status.textContent = "Uploading supporting document..."; const uploaded = await api("/api/crm/mileage-assets", { method: "POST", body: JSON.stringify({ mileageId: saved.mileage.id, category: "Supporting Documentation", file: await fileToPayload(file) }) }); state.mileageDocuments.push(uploaded.document); } closeModal(modal); renderMileage(); switchScreen("mileage"); showNotice("Mileage saved to Google Sheets."); }
+    catch (error) { status.textContent = error.message; status.classList.add("error"); } finally { submit.disabled = false; }
   });
 }
 
@@ -819,6 +916,7 @@ function renderJobCards(jobs, showCustomer, allowRemove = false) {
         <div class="crm-actions">
           <button class="crm-btn secondary" type="button" data-view-job="${escapeHtml(job.id)}">Open Work Order</button>
           <button class="crm-btn warning" type="button" data-edit-service="${escapeHtml(job.id)}">Edit Service</button>
+          ${job.jobStatus === "Completed" || job.dateCompleted ? `<button class="crm-btn secondary" type="button" data-log-mileage="${escapeHtml(job.id)}">Log Mileage</button>` : ""}
           ${allowRemove ? `<button class="crm-btn danger" type="button" data-remove-service="${escapeHtml(job.id)}">Remove Service</button>` : ""}
         </div>
       </article>
@@ -834,6 +932,7 @@ function bindJobButtons(root = document) {
     if (job && customer) openJobModal(customer, "service", job);
   }));
   root.querySelectorAll("[data-remove-service]").forEach((button) => button.addEventListener("click", () => removeService(button.dataset.removeService, button)));
+  root.querySelectorAll("[data-log-mileage]").forEach((button) => button.addEventListener("click", () => openMileageModal(null, jobById(button.dataset.logMileage))));
 }
 
 async function removeService(jobId, button) {
@@ -1020,10 +1119,13 @@ function openJobModal(customer = null, mode = "service", job = null) {
     <form class="crm-modal-card" id="job-form">
       <h2>${isEditing ? "Edit Service" : isWorkOrder ? "Add Work Order" : "Add Service"}${customer ? ` for ${escapeHtml(customer.name)}` : ""}</h2>
       ${customer ? `<input type="hidden" name="customerId" value="${escapeHtml(customer.id)}">` : searchableCustomerField()}
+      <input type="hidden" name="calendarCustomerName" value="${escapeHtml(customer?.name || "")}">
+      <input type="hidden" name="calendarJobAddress" value="${escapeHtml(customer ? [customer.streetAddress, customer.city, customer.state, customer.zipCode].filter(Boolean).join(", ") : "")}">
       <input type="hidden" name="jobId" value="${escapeHtml(job?.id || "")}">
       <div class="crm-form-grid">
         ${field("Appointment Date", "appointmentDate", job?.appointmentDate || (isWorkOrder ? "" : today), false, "date")}
         ${field("Appointment Time", "appointmentTime", job?.appointmentTime || "", false, "time")}
+        ${field("Estimated Duration (Minutes)", "estimatedDurationMinutes", job?.estimatedDurationMinutes || "60", false, "number")}
         ${selectField("Job Status", "jobStatus", job?.jobStatus || (isWorkOrder ? "Scheduled" : "Completed"), ["Lead", "Estimate Scheduled", "Estimate Sent", "Scheduled", "In Progress", "Completed", "Canceled"])}
         ${selectField("Service Type", "serviceType", job?.serviceType || "Dryer Vent Cleaning", serviceOptions)}
         ${field("Quoted Price", "quotedPrice", job?.quotedPrice || "")}
@@ -1079,6 +1181,8 @@ function openJobModal(customer = null, mode = "service", job = null) {
         const matchedCustomer = state.customers.find((item) => item.name.toLowerCase() === String(formData.customerLookup || "").trim().toLowerCase());
         if (!matchedCustomer) throw new Error("Choose a Customer from the list.");
         formData.customerId = matchedCustomer.id;
+        formData.calendarCustomerName = matchedCustomer.name;
+        formData.calendarJobAddress = [matchedCustomer.streetAddress, matchedCustomer.city, matchedCustomer.state, matchedCustomer.zipCode].filter(Boolean).join(", ");
       }
       const saved = await api("/api/crm/jobs", { method: isEditing ? "PUT" : "POST", body: JSON.stringify(formData) });
       closeModal(modal);
@@ -1190,7 +1294,7 @@ async function openJobDetail(jobId) {
   try {
     const data = await api(`/api/crm/job-assets?jobId=${encodeURIComponent(jobId)}`); state.selectedJob = data.job;
     const signed = data.job.signedWorkOrderFileId;
-    modal.innerHTML = `<section class="crm-modal-card crm-job-detail"><div class="crm-preview-header"><div><h2>${escapeHtml(data.job.serviceType || "Work Order")}</h2><p>${escapeHtml(data.customer.name)} · ${escapeHtml(formatDisplayDate(jobServiceDate(data.job)))}</p></div><div class="crm-actions"><button class="crm-btn warning" id="job-edit-service" type="button">Edit Service</button><button class="crm-btn secondary" data-close-modal type="button">Close</button></div></div>
+    modal.innerHTML = `<section class="crm-modal-card crm-job-detail"><div class="crm-preview-header"><div><h2>${escapeHtml(data.job.serviceType || "Work Order")}</h2><p>${escapeHtml(data.customer.name)} · ${escapeHtml(formatDisplayDate(jobServiceDate(data.job)))}</p><p><span class="crm-badge ${data.job.calendarSyncStatus === "Synced" ? "success" : "muted"}">Calendar: ${escapeHtml(data.job.calendarSyncStatus || "Not scheduled")}</span>${data.job.calendarSyncError ? ` <small>${escapeHtml(data.job.calendarSyncError)}</small>` : ""}</p></div><div class="crm-actions"><button class="crm-btn warning" id="job-edit-service" type="button">Edit Service</button><button class="crm-btn secondary" id="job-log-mileage" type="button">Log Mileage</button><button class="crm-btn secondary" data-close-modal type="button">Close</button></div></div>
       <div class="crm-stats crm-job-financial-stats"><div class="crm-stat"><strong>${formatMoney(data.job.subtotal || data.totals.revenue)}</strong><span>Subtotal (before tax)</span></div><div class="crm-stat"><strong>${formatMoney(data.job.salesTax)}</strong><span>Sales Tax (6.625%)</span></div><div class="crm-stat"><strong>${formatMoney(data.job.totalAmount || data.totals.totalAmount)}</strong><span>Total Amount</span></div><div class="crm-stat"><strong>${formatMoney(data.totals.totalExpenses)}</strong><span>Total Job Expenses</span></div><div class="crm-stat"><strong>${formatMoney(data.totals.grossProfit)}</strong><span>Gross Profit (before tax)</span></div></div>
       <section class="crm-subpanel"><h3>Job Expenses</h3><div class="crm-job-costs"><span>Parts & Materials <strong>${formatMoney(data.totals.partsMaterials)}</strong></span><span>Fuel / Travel <strong>${formatMoney(data.totals.fuelTravel)}</strong></span><span>Labor / Subcontractor <strong>${formatMoney(data.totals.laborSubcontractor)}</strong></span><span>Other Expenses <strong>${formatMoney(data.totals.other)}</strong></span></div><div class="crm-actions"><button class="crm-btn" id="job-add-expense" type="button">+ Add Expense</button></div>${data.expenses.length ? data.expenses.map(expenseCard).join("") : `<div class="crm-empty">No expenses linked to this Job.</div>`}</section>
       <section class="crm-subpanel"><h3>Signed Work Order</h3>${signed ? `<p class="crm-badge success">✓ Signed Work Order</p><p>${escapeHtml(data.job.signedWorkOrderFileName)}</p><div class="crm-actions"><button class="crm-btn secondary" data-preview-asset="${escapeHtml(signed)}" data-title="${escapeHtml(data.job.signedWorkOrderFileName)}" data-drive-url="${escapeHtml(data.job.signedWorkOrderUrl)}" type="button">View Signed Work Order</button><button class="crm-btn" data-upload-asset="signedWorkOrder" type="button">Replace Photo</button><button class="crm-btn danger" data-delete-asset="signedWorkOrder" data-job-id="${escapeHtml(jobId)}" type="button">Delete Photo</button></div>` : `<p class="crm-badge muted">No Signed Work Order Uploaded</p><div class="crm-actions"><button class="crm-btn" data-upload-asset="signedWorkOrder" type="button">Take Photo / Upload Signed Work Order</button></div>`}</section>
@@ -1198,6 +1302,7 @@ async function openJobDetail(jobId) {
       <section class="crm-subpanel"><h3>Job Documents</h3><div class="crm-actions"><button class="crm-btn" data-upload-asset="document" type="button">Upload File</button>${data.job.googleDriveFolderUrl ? `<a class="crm-btn secondary" target="_blank" rel="noopener" href="${escapeHtml(data.job.googleDriveFolderUrl)}">Open Job Folder in Google Drive</a>` : ""}</div><div class="crm-list">${data.documents.length ? data.documents.map((doc) => `<article class="crm-card"><h3>${escapeHtml(doc.documentType)}</h3><p>${escapeHtml(doc.fileName)}</p><div class="crm-actions"><button class="crm-btn secondary" data-preview-asset="${escapeHtml(doc.googleDriveFileId)}" data-title="${escapeHtml(doc.fileName)}" data-drive-url="${escapeHtml(doc.googleDriveFileUrl)}" type="button">View File</button><button class="crm-btn danger" data-delete-asset="document" data-id="${escapeHtml(doc.id)}" type="button">Delete</button></div></article>`).join("") : `<div class="crm-empty">No documents uploaded.</div>`}</div></section></section>`;
     modal.querySelector("[data-close-modal]").addEventListener("click", () => closeModal(modal));
     modal.querySelector("#job-edit-service").addEventListener("click", () => openJobModal(data.customer, "service", data.job));
+    modal.querySelector("#job-log-mileage").addEventListener("click", () => openMileageModal(null, data.job));
     modal.querySelector("#job-add-expense").addEventListener("click", () => openExpenseModal(null, data.job));
     modal.querySelectorAll("[data-preview-asset]").forEach((button) => button.addEventListener("click", () => openFilePreview(button.dataset.previewAsset, button.dataset.title, button.dataset.driveUrl)));
     modal.querySelectorAll("[data-upload-asset]").forEach((button) => button.addEventListener("click", () => openAssetUpload(data.job, button.dataset.uploadAsset)));
@@ -1302,6 +1407,11 @@ async function loadData(renderAll = true) {
   state.expenses = dashboardData.expenses || [];
   state.expenseSummary = dashboardData.expenseSummary || { total: 0, categoryTotals: {} };
   state.expenseCategories = dashboardData.expenseCategories || defaultExpenseCategories;
+  state.mileage = dashboardData.mileage || [];
+  state.mileageRates = dashboardData.mileageRates || [];
+  state.mileageSettings = dashboardData.mileageSettings || state.mileageSettings;
+  state.mileageDocuments = dashboardData.mileageDocuments || [];
+  state.calendar = dashboardData.calendar || { connected: false };
   if (state.selectedCustomer) {
     state.selectedCustomer = state.customers.find((customer) => customer.id === state.selectedCustomer.id) || state.selectedCustomer;
     state.jobs = jobsForCustomer(state.selectedCustomer.id);
@@ -1312,6 +1422,7 @@ async function loadData(renderAll = true) {
     renderDue();
     renderExpenses();
     renderSalesTax();
+    renderMileage();
     renderProfile();
   }
 }

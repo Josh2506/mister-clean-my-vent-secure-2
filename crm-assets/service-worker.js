@@ -1,4 +1,4 @@
-const CRM_SW_VERSION = "2026-09-17-sales-tax-summary";
+const CRM_SW_VERSION = "2026-09-21-mileage-calendar";
 
 self.addEventListener("install", () => {
   self.skipWaiting();

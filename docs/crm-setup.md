@@ -31,7 +31,7 @@ Use Google Sheets as the simple private database and Netlify Functions as the se
 - Secrets stay in Netlify environment variables, not GitHub.
 - Customer data is not placed in the public website files.
 
-## Phase 1 Scope
+## Current Scope
 
 Build only:
 
@@ -43,7 +43,7 @@ Build only:
 - Next-service-date field.
 - Due-soon and overdue customer lists.
 
-Future phases can add photo uploads, invoices, estimates, calendar views, exports, backups, and two-factor authentication.
+The CRM also includes expense receipts, job documents and photos, sales-tax reporting, a mileage tracker, and one-way Google Calendar synchronization.
 
 ## Google Sheet Setup
 
@@ -73,7 +73,18 @@ Add these in Netlify under Site configuration, then Environment variables:
 
 Use `.env.example` only as a template. Do not paste real keys into GitHub.
 
-Drive uploads use `tools/google-drive-upload-bridge.gs`, deployed as a Google Apps Script web app that executes as the Drive owner. Set the same strong secret in the script property `CRM_DRIVE_BRIDGE_SECRET` and Netlify's `GOOGLE_DRIVE_WEB_APP_SECRET`. The script is restricted to the configured CRM root folder and reuses matching folders before creating anything.
+Drive uploads and Calendar synchronization use `tools/google-drive-upload-bridge.gs`, deployed as a Google Apps Script web app that executes as the business Google account. Set the same strong secret in the script property `CRM_DRIVE_BRIDGE_SECRET` and Netlify's `GOOGLE_DRIVE_WEB_APP_SECRET`. The script is restricted to the configured CRM root folder and reuses matching folders before creating anything.
+
+For Calendar:
+
+1. Copy `tools/appsscript.json` into the Apps Script manifest and keep the project timezone as `America/New_York`.
+2. Add the Script Property `CRM_CALENDAR_ID` with the exact ID of the business calendar to use.
+3. Deploy a new web-app version, executing as the script owner, and authorize the Drive and Calendar scopes.
+4. Open the CRM Dashboard and use **Test Calendar Connection**. The test creates a clearly labeled temporary event and removes it immediately.
+
+Calendar sync is intentionally one-way from the CRM. A scheduled/confirmed work order creates one event; rescheduling updates the stored event ID; canceling marks that event canceled. No customer guest or invitation is sent.
+
+Mileage uses the `Mileage`, `Mileage Documents`, `Mileage Rates`, and `CRM Settings` tabs. The built-in 2026 rate table is 0.725 per mile from January 1 through June 30 and 0.76 per mile from July 1 through December 31. Rates remain editable in the CRM. Potential deductions are estimates, not guaranteed savings or final tax advice.
 
 To create `CRM_ADMIN_PASSWORD_HASH`, run:
 
