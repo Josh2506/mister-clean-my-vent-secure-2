@@ -19,6 +19,7 @@ const state = {
   mileageDocuments: [],
   mileageYear: "",
   calendar: { connected: false },
+  ownerFinance: { transactions: [], commitments: [], settings: {}, summary: {} },
 };
 
 const defaultExpenseCategories = [
@@ -166,6 +167,7 @@ function shell() {
         <button type="button" data-screen="expenses">Expenses</button>
         <button type="button" data-screen="sales-tax">Sales Tax</button>
         <button type="button" data-screen="mileage">Mileage</button>
+        <button type="button" data-screen="owner-finance">Owner Finance</button>
         <button type="button" data-screen="profile">Profile</button>
       </nav>
       <div class="crm-toast" id="crm-toast" role="status" aria-live="polite"></div>
@@ -176,6 +178,7 @@ function shell() {
         <section id="screen-expenses" class="crm-screen"></section>
         <section id="screen-sales-tax" class="crm-screen"></section>
         <section id="screen-mileage" class="crm-screen"></section>
+        <section id="screen-owner-finance" class="crm-screen"></section>
         <section id="screen-profile" class="crm-screen"></section>
       </div>
       <div class="crm-modal" id="customer-modal" aria-hidden="true"></div>
@@ -184,6 +187,7 @@ function shell() {
       <div class="crm-modal" id="mileage-modal" aria-hidden="true"></div>
       <div class="crm-modal" id="asset-modal" aria-hidden="true"></div>
       <div class="crm-modal" id="preview-modal" aria-hidden="true"></div>
+      <div class="crm-modal" id="owner-finance-modal" aria-hidden="true"></div>
     </section>
   `;
 
@@ -456,6 +460,10 @@ function renderDashboard() {
         <button class="crm-btn" type="button" id="add-work-order-button">Add Work Order</button>
         <button class="crm-btn" type="button" id="add-customer-button">Add Customer</button>
         <button class="crm-btn" type="button" id="add-expense-button">Add Expense</button>
+        <button class="crm-btn" type="button" data-owner-action="draw">Record Owner's Draw</button>
+        <button class="crm-btn" type="button" data-owner-action="contribution">Add Owner's Contribution</button>
+        <button class="crm-btn" type="button" data-owner-action="purchase">Record Personal Business Purchase</button>
+        <button class="crm-btn secondary" type="button" data-screen-link="owner-finance">View Available Cash</button>
         <button class="crm-btn secondary" type="button" id="refresh-button">Refresh</button>
       </div>
     </div>
@@ -499,6 +507,8 @@ function renderDashboard() {
   document.querySelector("#add-work-order-button").addEventListener("click", openWorkOrderPicker);
   document.querySelector("#add-customer-button").addEventListener("click", () => openCustomerModal());
   document.querySelector("#add-expense-button").addEventListener("click", () => openExpenseModal());
+  document.querySelectorAll("[data-owner-action]").forEach((button) => button.addEventListener("click", () => openOwnerFinanceModal(button.dataset.ownerAction)));
+  document.querySelector("[data-screen-link='owner-finance']").addEventListener("click", () => switchScreen("owner-finance"));
   document.querySelector("#refresh-button").addEventListener("click", showDashboard);
   document.querySelector("#dashboard-month").addEventListener("change", (event) => {
     state.dashboardMonth = event.target.value;
@@ -789,6 +799,51 @@ function expenseCard(expense) {
     ? `<button class="crm-receipt-thumb" data-view-file="${escapeHtml(expense.googleDriveFileId)}" type="button"><img src="${fileUrl(expense.googleDriveFileId)}" alt="Receipt from ${escapeHtml(expense.vendor)}"><span>View Receipt</span></button>`
     : expense.googleDriveFileId ? `<button class="crm-btn secondary" data-view-file="${escapeHtml(expense.googleDriveFileId)}" type="button">View Receipt</button>` : "";
   return `<article class="crm-card crm-expense-card"><div><h3>${escapeHtml(expense.vendor)}</h3><p>${escapeHtml(formatDisplayDate(expense.date))} · ${escapeHtml(expense.category)}</p><p>${escapeHtml(expense.customer?.name || "General business expense")}${expense.job ? ` — ${escapeHtml(expense.job.serviceType)}` : ""}</p></div><strong class="crm-money">${formatMoney(expense.totalAmount)}</strong>${receipt}<div class="crm-actions"><button class="crm-btn warning" data-edit-expense="${escapeHtml(expense.id)}" type="button">Edit</button><button class="crm-btn danger" data-delete-expense="${escapeHtml(expense.id)}" type="button">Delete</button></div></article>`;
+}
+
+function ownerFinanceCsv() {
+  const m = state.ownerFinance.summary?.monthly || {}; const rows = [["Monthly Owner Summary", m.month || ""], ["Starting business cash", m.startingCash ?? "Unavailable"], ["Customer payments received", m.customerPayments || 0], ["Owner cash contributions", m.ownerContributions || 0], ["Business cash expenses paid", -(m.businessCashExpenses || 0)], ["Owner draws", -(m.ownerDraws || 0)], ["Tax payments", -(m.taxPayments || 0)], ["Other cash transactions", m.otherCash || 0], ["Ending business cash", m.endingCash ?? "Unavailable"], [], ["Date","Type","Amount","Owner","Payment Method","Business Account","Reference","Notes"]];
+  state.ownerFinance.transactions.forEach((tx) => rows.push([tx.date,tx.transactionType,tx.amount,tx.ownerName,tx.paymentMethod,tx.businessAccount,tx.referenceNumber,tx.notes]));
+  const csv = rows.map((row) => row.map((value) => `"${String(value || "").replace(/"/g,'""')}"`).join(",")).join("\n");
+  const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); link.download = `owner-finance-${todayIso()}.csv`; link.click(); URL.revokeObjectURL(link.href);
+}
+
+function renderOwnerFinance() {
+  const data = state.ownerFinance || { transactions: [], commitments: [], settings: {}, summary: {} }; const s = data.summary || {};
+  const warning = !s.balanceVerified ? `<div class="crm-status error">The bank balance is missing, unreconciled, or more than 45 days old. Available cash is intentionally withheld until the balance is reconciled.</div>` : "";
+  document.querySelector("#screen-owner-finance").innerHTML = `
+    <div class="crm-page-title"><h1>Owner's Draws & Contributions</h1><p>Cash, owner equity, reserves, and commitments—kept separate from revenue and profit.</p><div class="crm-actions">
+      <button class="crm-btn" data-owner-action="draw">Record Owner's Draw</button><button class="crm-btn" data-owner-action="contribution">Add Owner's Contribution</button><button class="crm-btn" data-owner-action="purchase">Record Personal Business Purchase</button><button class="crm-btn secondary" data-owner-action="commitment">Add Upcoming Bill</button><button class="crm-btn secondary" data-owner-action="settings">Update Cash & Reserves</button><button class="crm-btn secondary" id="owner-csv">Download CSV</button><button class="crm-btn secondary" id="owner-print">Print / PDF</button>
+    </div></div>${warning}
+    <div class="crm-grid">
+      <section class="crm-panel crm-col-12"><h2>Available for Owner's Draw</h2><div class="crm-stats crm-monthly-stats">
+        <div class="crm-stat"><strong>${s.currentRecordedCash == null ? "Not entered" : formatMoney(s.currentRecordedCash)}</strong><span>Recorded business cash${s.balanceAsOf ? ` as of ${escapeHtml(formatDisplayDate(s.balanceAsOf))}` : ""}</span></div>
+        <div class="crm-stat"><strong>${formatMoney(s.salesTaxLiability)}</strong><span>Sales tax not remitted</span></div><div class="crm-stat"><strong>${formatMoney(s.commitmentsTotal)}</strong><span>Open commitments</span></div><div class="crm-stat"><strong>${formatMoney(s.incomeTaxReserveRemaining)}</strong><span>Income & SE tax reserve</span></div><div class="crm-stat"><strong>${formatMoney(s.operatingReserve)}</strong><span>Operating reserve</span></div><div class="crm-stat"><strong>${s.availableForDraw == null ? "Unavailable" : formatMoney(s.availableForDraw)}</strong><span>Estimated available cash—not a guarantee</span></div>
+      </div></section>
+      <section class="crm-panel crm-col-12"><h2>Business Cash Dashboard</h2><div class="crm-stats"><div class="crm-stat"><strong>${formatMoney(s.revenue)}</strong><span>Revenue received (before tax)</span></div><div class="crm-stat"><strong>${formatMoney(s.businessProfit)}</strong><span>Estimated business profit</span></div><div class="crm-stat"><strong>${formatMoney(s.drawsMonth)}</strong><span>Draws this month</span></div><div class="crm-stat"><strong>${formatMoney(s.drawsYear)}</strong><span>Draws this year</span></div><div class="crm-stat"><strong>${formatMoney(s.contributionsMonth)}</strong><span>Contributions this month</span></div><div class="crm-stat"><strong>${formatMoney(s.contributionsYear)}</strong><span>Contributions this year</span></div></div></section>
+      <section class="crm-panel crm-col-12"><h2>Monthly Owner's Summary</h2>${s.monthly?.endingCash == null ? `<p class="crm-help">Enter and reconcile the bank balance to calculate starting and ending cash.</p>` : ""}<div class="crm-stats"><div class="crm-stat"><strong>${s.monthly?.startingCash == null ? "Unavailable" : formatMoney(s.monthly.startingCash)}</strong><span>Starting cash</span></div><div class="crm-stat"><strong>${formatMoney(s.monthly?.customerPayments)}</strong><span>+ Customer payments received</span></div><div class="crm-stat"><strong>${formatMoney(s.monthly?.ownerContributions)}</strong><span>+ Owner cash contributions</span></div><div class="crm-stat"><strong>${formatMoney(s.monthly?.businessCashExpenses)}</strong><span>− Business cash expenses</span></div><div class="crm-stat"><strong>${formatMoney(s.monthly?.ownerDraws)}</strong><span>− Owner draws</span></div><div class="crm-stat"><strong>${formatMoney(s.monthly?.taxPayments)}</strong><span>− Tax payments</span></div><div class="crm-stat"><strong>${s.monthly?.endingCash == null ? "Unavailable" : formatMoney(s.monthly.endingCash)}</strong><span>= Ending cash</span></div></div></section>
+      <section class="crm-panel crm-col-6"><h2>Tax Reserve Tracker</h2><p><strong>Federal income tax reserve:</strong> ${formatMoney(s.federalTaxReserve)}</p><p><strong>Self-employment tax reserve:</strong> ${formatMoney(s.selfEmploymentTaxReserve)}</p><p><strong>New Jersey income tax reserve:</strong> ${formatMoney(s.njIncomeTaxReserve)}</p><p><strong>Estimated tax payments:</strong> ${formatMoney(s.estimatedTaxPayments)}</p><p><strong>NJ sales tax collected:</strong> ${formatMoney(s.collectedSalesTax)}</p><p><strong>Sales tax payments:</strong> ${formatMoney(s.salesTaxPayments)}</p><p class="crm-help">These are configurable estimates, not calculated tax liabilities. Transfers to savings are not expenses.</p></section>
+      <section class="crm-panel crm-col-6"><h2>Personally Paid Business Expenses</h2><p><strong>Owner-funded expenses:</strong> ${formatMoney(s.personalExpenseContributions)}</p><p><strong>Awaiting reimbursement:</strong> ${formatMoney(s.reimbursementsPending)}</p><p>Each purchase remains one business expense; its funding or reimbursement status is tracked separately.</p></section>
+      <section class="crm-panel crm-col-12"><h2>Owner Transactions</h2><div class="crm-list">${data.transactions.length ? data.transactions.map((tx) => `<article class="crm-card"><h3>${escapeHtml(tx.transactionType)}</h3><p>${escapeHtml(formatDisplayDate(tx.date))} · <strong>${formatMoney(tx.amount)}</strong> · ${escapeHtml(tx.businessAccount || "Account not specified")}</p><p>${escapeHtml(tx.referenceNumber || tx.notes || "No reference")}</p><button class="crm-btn warning" data-edit-owner="${escapeHtml(tx.id)}">Correct Entry</button></article>`).join("") : `<div class="crm-empty">No owner transactions recorded.</div>`}</div></section>
+      <section class="crm-panel crm-col-12"><h2>Upcoming Bills & Cash Commitments</h2><div class="crm-list">${data.commitments.length ? data.commitments.map((item) => `<article class="crm-card"><h3>${escapeHtml(item.category)}</h3><p>${escapeHtml(item.description || "Cash commitment")} · ${formatMoney(item.amount)} · due ${escapeHtml(formatDisplayDate(item.dueDate))}</p><span class="crm-badge">${escapeHtml(item.status)}</span><button class="crm-btn warning" data-edit-commitment="${escapeHtml(item.id)}">Update</button></article>`).join("") : `<div class="crm-empty">No upcoming bills recorded.</div>`}</div></section>
+    </div>`;
+  document.querySelectorAll("#screen-owner-finance [data-owner-action]").forEach((button) => button.addEventListener("click", () => openOwnerFinanceModal(button.dataset.ownerAction)));
+  document.querySelectorAll("[data-edit-owner]").forEach((button) => button.addEventListener("click", () => openOwnerFinanceModal("transaction", data.transactions.find((tx) => tx.id === button.dataset.editOwner))));
+  document.querySelectorAll("[data-edit-commitment]").forEach((button) => button.addEventListener("click", () => openOwnerFinanceModal("commitment", data.commitments.find((item) => item.id === button.dataset.editCommitment))));
+  document.querySelector("#owner-csv").addEventListener("click", ownerFinanceCsv); document.querySelector("#owner-print").addEventListener("click", () => { document.body.classList.add("printing-owner-finance"); window.print(); window.setTimeout(() => document.body.classList.remove("printing-owner-finance"), 300); });
+}
+
+function openOwnerFinanceModal(mode, existing = null) {
+  const modal = document.querySelector("#owner-finance-modal"); modal.classList.add("open"); modal.setAttribute("aria-hidden","false"); modal.setAttribute("role","dialog"); modal.setAttribute("aria-modal","true");
+  const type = mode === "draw" ? "Owner's Draw" : mode === "contribution" ? "Owner's Contribution" : existing?.transactionType || "";
+  let title = "Owner Finance"; let fields = ""; let entity = "transaction";
+  if (["draw","contribution","transaction"].includes(mode)) { title = existing ? "Correct Owner Transaction" : type; fields = `${field("Date","date",existing?.date || todayIso(),true,"date")}${field("Amount","amount",existing?.amount || "",true,"number")}${field("Owner Name","ownerName",existing?.ownerName || "Joshua Esquivel",true)}${selectField("Transaction Type","transactionType",type,["Owner's Draw","Owner's Contribution","Owner Reimbursement","Estimated Tax Payment","Sales Tax Payment","Other Cash Adjustment"])}${selectField("Tax Category (if applicable)","taxCategory",existing?.taxCategory || "",["Federal Income Tax","Self-Employment Tax","New Jersey Income Tax","New Jersey Sales Tax"])}${selectField("Payment Method","paymentMethod",existing?.paymentMethod || "",["Bank Transfer","Cash","Check","Debit Card","Credit Card","Other"])}${field("Business Account","businessAccount",existing?.businessAccount || "")}${field("Reference / Transaction Number","referenceNumber",existing?.referenceNumber || "")}${textareaField("Notes","notes",existing?.notes || "")}${fileField("Supporting Document","supporting-document")}`; }
+  else if (mode === "purchase") { title = "Record Personal Business Purchase"; entity = "personalPurchase"; fields = `${field("Date","date",todayIso(),true,"date")}${field("Vendor / Store","vendor","",true)}${selectField("Category","category","Other Business Expense",state.expenseCategories || defaultExpenseCategories)}${field("Total Amount","totalAmount","",true,"number")}${selectField("Funding Treatment","ownerFundingTreatment","Owner Contribution",["Owner Contribution","Awaiting Reimbursement","Reimbursed"])}${selectField("Reimbursement Status","reimbursementStatus","Not Applicable",["Not Applicable","Awaiting Reimbursement","Reimbursed"])}${textareaField("Description","description","")}${textareaField("Notes","notes","")}`; }
+  else if (mode === "commitment") { title = existing ? "Update Cash Commitment" : "Add Upcoming Bill"; entity = "commitment"; fields = `${field("Due Date","dueDate",existing?.dueDate || todayIso(),true,"date")}${selectField("Category","category",existing?.category || "Other Planned Expense",["Business Insurance","Equipment Purchase","Advertising","Vehicle Expense","Chemicals & Supplies","Business Subscription","Outstanding Check","Pending Transfer","Other Planned Expense"])}${field("Amount","amount",existing?.amount || "",true,"number")}${selectField("Status","status",existing?.status || "Upcoming",["Upcoming","Pending","Paid","Canceled"])}${field("Reference Number","referenceNumber",existing?.referenceNumber || "")}${textareaField("Description","description",existing?.description || "")}${textareaField("Notes","notes",existing?.notes || "")}`; }
+  else { title = "Update Cash & Reserve Settings"; entity = "settings"; const st = state.ownerFinance.settings || {}; fields = `${field("Reconciled Bank Balance","RECONCILED_BANK_BALANCE",st.RECONCILED_BANK_BALANCE || "",true,"number")}${field("Balance As-Of Date","RECONCILED_BANK_BALANCE_AS_OF",st.RECONCILED_BANK_BALANCE_AS_OF || todayIso(),true,"date")}${selectField("Balance Status","RECONCILED_BANK_BALANCE_STATUS",st.RECONCILED_BANK_BALANCE_STATUS || "Unreconciled",["Reconciled","Unreconciled"])}${field("Federal Income Tax Reserve %","FEDERAL_INCOME_TAX_RESERVE_PERCENT",st.FEDERAL_INCOME_TAX_RESERVE_PERCENT || "10",true,"number")}${field("Self-Employment Tax Reserve %","SELF_EMPLOYMENT_TAX_RESERVE_PERCENT",st.SELF_EMPLOYMENT_TAX_RESERVE_PERCENT || "15.3",true,"number")}${field("New Jersey Income Tax Reserve %","NJ_INCOME_TAX_RESERVE_PERCENT",st.NJ_INCOME_TAX_RESERVE_PERCENT || "3",true,"number")}${field("Minimum Operating Cash Reserve","MINIMUM_OPERATING_CASH_RESERVE",st.MINIMUM_OPERATING_CASH_RESERVE || "1000",true,"number")}${selectField("LLC Tax Classification","LLC_TAX_CLASSIFICATION",st.LLC_TAX_CLASSIFICATION || "Needs Confirmation",["Needs Confirmation","Single-Member LLC / Disregarded Entity","S Corporation","C Corporation"])}<p class="crm-help full">Keep “Needs Confirmation” unless your business records confirm a corporate election. Percentages are estimates only.</p>`; }
+  modal.innerHTML = `<form class="crm-modal-card" id="owner-finance-form"><h2>${escapeHtml(title)}</h2><input type="hidden" name="entity" value="${entity}"><input type="hidden" name="transactionId" value="${escapeHtml(existing?.id || "")}"><input type="hidden" name="commitmentId" value="${escapeHtml(existing?.id || "")}"><div class="crm-form-grid">${fields}</div><div class="crm-actions"><button class="crm-btn" type="submit">Review & Save</button><button class="crm-btn secondary" type="button" data-close-modal>Cancel</button></div><p class="crm-status"></p></form>`;
+  setModalLock(); const form = modal.querySelector("form"); bindMobileInputFocus(form); modal.querySelector("[data-close-modal]").addEventListener("click", () => closeModal(modal));
+  form.addEventListener("submit", async (event) => { event.preventDefault(); const status = form.querySelector(".crm-status"); const body = Object.fromEntries(new FormData(form)); if (!confirm("Confirm this financial entry? It will be saved with an audit trail.")) return; body.confirmed = true; if (entity === "transaction") body.file = await fileToPayload(form.querySelector("#supporting-document")?.files?.[0]); try { await api("/api/crm/owner-finance", { method: existing ? "PUT" : "POST", body: JSON.stringify(body) }); closeModal(modal); await loadData(); switchScreen("owner-finance"); showNotice("Owner finance entry saved with an audit trail."); } catch (error) { status.textContent = error.message; status.classList.add("error"); } });
 }
 
 function renderExpenses() {
@@ -1362,8 +1417,12 @@ function field(label, name, value, required = false, type = "text", className = 
 
   return `<div class="crm-field ${className}">
     <label for="${name}">${label}</label>
-    <input id="${name}" name="${name}" type="${type}" value="${escapeHtml(value)}" ${inputAttributes[name] || ""} ${required ? "required" : ""}>
+    <input id="${name}" name="${name}" type="${type}" value="${escapeHtml(value)}" ${type === "number" ? 'step="0.01" inputmode="decimal"' : ""} ${inputAttributes[name] || ""} ${required ? "required" : ""}>
   </div>`;
+}
+
+function fileField(label, id) {
+  return `<div class="crm-field full"><label for="${id}">${label}</label><input id="${id}" type="file" accept="image/jpeg,image/png,image/heic,image/heif,application/pdf"><small>Optional JPG, PNG, HEIC, or PDF up to 4 MB.</small></div>`;
 }
 
 function readonlyMoneyField(label, name, value) {
@@ -1412,6 +1471,7 @@ async function loadData(renderAll = true) {
   state.mileageSettings = dashboardData.mileageSettings || state.mileageSettings;
   state.mileageDocuments = dashboardData.mileageDocuments || [];
   state.calendar = dashboardData.calendar || { connected: false };
+  state.ownerFinance = dashboardData.ownerFinance || { transactions: [], commitments: [], settings: {}, summary: {} };
   if (state.selectedCustomer) {
     state.selectedCustomer = state.customers.find((customer) => customer.id === state.selectedCustomer.id) || state.selectedCustomer;
     state.jobs = jobsForCustomer(state.selectedCustomer.id);
@@ -1423,6 +1483,7 @@ async function loadData(renderAll = true) {
     renderExpenses();
     renderSalesTax();
     renderMileage();
+    renderOwnerFinance();
     renderProfile();
   }
 }

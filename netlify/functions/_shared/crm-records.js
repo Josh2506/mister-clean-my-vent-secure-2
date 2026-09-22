@@ -370,6 +370,11 @@ function expenseFromBody(body, existing = {}) {
     "Receipt MIME Type": bodyField("receiptMimeType", "Receipt MIME Type"),
     "Google Drive File ID": bodyField("googleDriveFileId", "Google Drive File ID"),
     "Google Drive File URL": bodyField("googleDriveFileUrl", "Google Drive File URL"),
+    "Payment Source": bodyField("paymentSource", "Payment Source") || "Business Funds",
+    "Owner Funding Treatment": bodyField("ownerFundingTreatment", "Owner Funding Treatment"),
+    "Reimbursement Status": bodyField("reimbursementStatus", "Reimbursement Status"),
+    "Reimbursement Date": bodyField("reimbursementDate", "Reimbursement Date"),
+    "Owner Transaction ID": bodyField("ownerTransactionId", "Owner Transaction ID"),
     "Created At": existing["Created At"] || timestamp,
     "Updated At": timestamp,
     Archived: clean(body.archived || body.Archived || existing.Archived || "FALSE"),
@@ -394,10 +399,56 @@ function expenseToClient(record) {
     receiptMimeType: readRecordValue(record, "Receipt MIME Type"),
     googleDriveFileId: readRecordValue(record, "Google Drive File ID"),
     googleDriveFileUrl: readRecordValue(record, "Google Drive File URL"),
+    paymentSource: readRecordValue(record, "Payment Source") || "Business Funds",
+    ownerFundingTreatment: readRecordValue(record, "Owner Funding Treatment"),
+    reimbursementStatus: readRecordValue(record, "Reimbursement Status"),
+    reimbursementDate: readRecordValue(record, "Reimbursement Date"),
+    ownerTransactionId: readRecordValue(record, "Owner Transaction ID"),
     createdAt: readRecordValue(record, "Created At"),
     updatedAt: readRecordValue(record, "Updated At"),
   };
 }
+
+function ownerTransactionFromBody(body, existing = {}) {
+  const timestamp = nowIso();
+  const value = (camel, header) => Object.prototype.hasOwnProperty.call(body, camel) ? clean(body[camel]) : clean(existing[header]);
+  const amount = Number(value("amount", "Amount"));
+  const type = value("transactionType", "Transaction Type");
+  if (!['Owner\'s Draw', "Owner's Contribution", "Owner Reimbursement", "Estimated Tax Payment", "Sales Tax Payment", "Other Cash Adjustment"].includes(type)) {
+    const error = new Error("Choose a valid owner transaction type."); error.statusCode = 400; throw error;
+  }
+  if (!Number.isFinite(amount) || amount <= 0) { const error = new Error("Enter an amount greater than zero."); error.statusCode = 400; throw error; }
+  const date = value("date", "Date") || todayDate();
+  const account = value("businessAccount", "Business Account");
+  const reference = value("referenceNumber", "Reference Number");
+  const deduplicationKey = [date, type, amount.toFixed(2), account.toLowerCase(), reference.toLowerCase()].join("|");
+  return { ...existing,
+    "Transaction ID": existing["Transaction ID"] || body.transactionId || id("own"), Date: date,
+    "Owner Name": value("ownerName", "Owner Name") || "Joshua Esquivel", "Transaction Type": type, "Tax Category": value("taxCategory", "Tax Category"), Amount: moneyString(amount),
+    "Payment Method": value("paymentMethod", "Payment Method"), "Business Account": account,
+    "Reference Number": reference, Notes: value("notes", "Notes"), "Expense ID": value("expenseId", "Expense ID"),
+    "Deduplication Key": deduplicationKey, "Document File Name": value("documentFileName", "Document File Name"),
+    "Document MIME Type": value("documentMimeType", "Document MIME Type"), "Google Drive File ID": value("googleDriveFileId", "Google Drive File ID"),
+    "Google Drive File URL": value("googleDriveFileUrl", "Google Drive File URL"), "Created At": existing["Created At"] || timestamp,
+    "Updated At": timestamp, Archived: value("archived", "Archived") || "FALSE" };
+}
+
+function ownerTransactionToClient(record) { return {
+  id: readRecordValue(record, "Transaction ID"), date: readRecordValue(record, "Date"), ownerName: readRecordValue(record, "Owner Name"),
+  transactionType: readRecordValue(record, "Transaction Type"), taxCategory: readRecordValue(record, "Tax Category"), amount: readRecordValue(record, "Amount"), paymentMethod: readRecordValue(record, "Payment Method"),
+  businessAccount: readRecordValue(record, "Business Account"), referenceNumber: readRecordValue(record, "Reference Number"), notes: readRecordValue(record, "Notes"),
+  expenseId: readRecordValue(record, "Expense ID"), googleDriveFileId: readRecordValue(record, "Google Drive File ID"), googleDriveFileUrl: readRecordValue(record, "Google Drive File URL"),
+  documentFileName: readRecordValue(record, "Document File Name"), createdAt: readRecordValue(record, "Created At"), updatedAt: readRecordValue(record, "Updated At") } }
+
+function cashCommitmentFromBody(body, existing = {}) {
+  const timestamp = nowIso(); const amount = Number(body.amount ?? existing.Amount);
+  if (!Number.isFinite(amount) || amount <= 0) { const error = new Error("Enter an amount greater than zero."); error.statusCode = 400; throw error; }
+  return { ...existing, "Commitment ID": existing["Commitment ID"] || body.commitmentId || id("com"), "Due Date": clean(body.dueDate ?? existing["Due Date"]) || todayDate(),
+    Category: clean(body.category ?? existing.Category) || "Other Planned Expense", Description: clean(body.description ?? existing.Description), Amount: moneyString(amount),
+    Status: clean(body.status ?? existing.Status) || "Upcoming", "Reference Number": clean(body.referenceNumber ?? existing["Reference Number"]), Notes: clean(body.notes ?? existing.Notes),
+    "Created At": existing["Created At"] || timestamp, "Updated At": timestamp, Archived: clean(body.archived ?? existing.Archived) || "FALSE" };
+}
+function cashCommitmentToClient(record) { return { id: readRecordValue(record, "Commitment ID"), dueDate: readRecordValue(record, "Due Date"), category: readRecordValue(record, "Category"), description: readRecordValue(record, "Description"), amount: readRecordValue(record, "Amount"), status: readRecordValue(record, "Status"), referenceNumber: readRecordValue(record, "Reference Number"), notes: readRecordValue(record, "Notes"), createdAt: readRecordValue(record, "Created At"), updatedAt: readRecordValue(record, "Updated At") }; }
 
 function photoToClient(record) {
   return {
@@ -515,6 +566,10 @@ module.exports = {
   jobToClient,
   mileageFromBody,
   mileageToClient,
+  ownerTransactionFromBody,
+  ownerTransactionToClient,
+  cashCommitmentFromBody,
+  cashCommitmentToClient,
   nowIso,
   photoToClient,
   readRecordValue,

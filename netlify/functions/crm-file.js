@@ -4,11 +4,12 @@ const { downloadFile } = require("./_shared/google-drive");
 const { json } = require("./_shared/http");
 
 async function isKnownFile(fileId) {
-  const [expenses, photos, documents, jobs] = await Promise.all([getRows("Expenses"), getRows("Job Photos"), getRows("Job Documents"), getRows("Jobs")]);
+  const [expenses, photos, documents, jobs, ownerTransactions] = await Promise.all([getRows("Expenses"), getRows("Job Photos"), getRows("Job Documents"), getRows("Jobs"), getRows("Owner Transactions")]);
   return expenses.some((row) => row["Google Drive File ID"] === fileId)
     || photos.some((row) => row["Google Drive File ID"] === fileId)
     || documents.some((row) => row["Google Drive File ID"] === fileId)
-    || jobs.some((row) => row["Signed Work Order File ID"] === fileId);
+    || jobs.some((row) => row["Signed Work Order File ID"] === fileId)
+    || ownerTransactions.some((row) => row["Google Drive File ID"] === fileId);
 }
 
 function safeDownloadName(name) {

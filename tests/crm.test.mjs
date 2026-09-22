@@ -19,6 +19,7 @@ const jobAssetsApi = require("../netlify/functions/crm-job-assets.js");
 const fileApi = require("../netlify/functions/crm-file.js");
 const mileageApi = require("../netlify/functions/crm-mileage.js");
 const calendarApi = require("../netlify/functions/crm-calendar.js");
+const ownerFinanceApi = require("../netlify/functions/crm-owner-finance.js");
 const login = require("../netlify/functions/crm-login.js");
 const records = require("../netlify/functions/_shared/crm-records.js");
 const googleSheets = require("../netlify/functions/_shared/google-sheets.js");
@@ -45,6 +46,7 @@ assert.equal((await jobAssetsApi.handler(unauthEvent)).statusCode, 401, "job att
 assert.equal((await fileApi.handler(unauthEvent)).statusCode, 401, "Drive file proxy must reject logged-out visitors");
 assert.equal((await mileageApi.handler(unauthEvent)).statusCode, 401, "mileage API must reject logged-out visitors");
 assert.equal((await calendarApi.handler(unauthEvent)).statusCode, 401, "Calendar status API must reject logged-out visitors");
+assert.equal((await ownerFinanceApi.handler(unauthEvent)).statusCode, 401, "owner finance API must reject logged-out visitors");
 
 const badLogin = await login.handler({
   httpMethod: "POST",
@@ -201,6 +203,14 @@ assert.match(expense["Expense ID"], /^exp_/, "expenses should receive stable pre
 assert.equal(records.expenseToClient(expense).jobId, job["Job ID"], "expense should retain its Job relationship");
 assert.equal(records.expenseToClient(expense).customerId, customer["Customer ID"], "expense should retain its Customer relationship");
 assert.throws(() => records.expenseFromBody({ vendor: "Wawa", totalAmount: "not-a-number" }), /valid total/i);
+const personalExpense = records.expenseFromBody({ vendor: "Supply Store", totalAmount: "150", paymentSource: "Personal Funds", ownerFundingTreatment: "Owner Contribution", reimbursementStatus: "Not Applicable" });
+assert.equal(records.expenseToClient(personalExpense).paymentSource, "Personal Funds", "personally paid purchases must remain one expense with separate funding metadata");
+const ownerDraw = records.ownerTransactionFromBody({ date: "2026-09-22", amount: "300", ownerName: "Joshua Esquivel", transactionType: "Owner's Draw", businessAccount: "Business Checking", referenceNumber: "TX-100" });
+assert.equal(records.ownerTransactionToClient(ownerDraw).amount, "300.00", "owner draws should store an exact cash amount");
+assert.match(ownerDraw["Deduplication Key"], /2026-09-22\|Owner's Draw\|300\.00/, "owner withdrawals should receive a stable duplicate-prevention key");
+assert.throws(() => records.ownerTransactionFromBody({ amount: "50", transactionType: "Payroll" }), /valid owner transaction type/i, "owner draws must not be classified as payroll");
+const commitment = records.cashCommitmentFromBody({ dueDate: "2026-10-01", amount: "500", category: "Business Insurance", status: "Upcoming" });
+assert.equal(records.cashCommitmentToClient(commitment).amount, "500.00", "upcoming business obligations should be tracked separately from expenses");
 
 const signedJob = records.jobFromBody({
   customerId: customer["Customer ID"],
@@ -218,6 +228,9 @@ assert.ok(schema.tabs.Expenses.includes("Google Drive File ID"), "Expenses tab s
 assert.ok(schema.tabs.Jobs.includes("Signed Work Order File ID"), "Jobs should be extended instead of adding a duplicate Work Orders table");
 assert.ok(schema.tabs.Jobs.includes("Calendar Event ID"), "Jobs should persist one Google Calendar event ID");
 assert.ok(schema.tabs.Mileage.includes("Eligible Business Miles"), "Mileage should keep eligible business miles separate");
+assert.ok(schema.tabs["Owner Transactions"].includes("Deduplication Key"), "owner transactions should prevent duplicate cash entries");
+assert.ok(schema.tabs.Expenses.includes("Owner Funding Treatment"), "personal expense funding should be tracked without duplicating the expense");
+assert.ok(schema.tabs["Owner Finance Audit"].includes("Before JSON"), "owner finance corrections should preserve an audit trail");
 assert.ok(schema.tabs.Mileage.includes("Personal or Nonqualifying Miles"), "Mileage should retain nonqualifying mileage for annual business-use reporting");
 assert.deepEqual(schema.tabs["Mileage Rates"].slice(1, 4), ["Effective Start", "Effective End", "Business Rate"], "mileage rates should be date-effective and configurable");
 assert.deepEqual(schema.tabs.Jobs.slice(schema.tabs.Jobs.indexOf("Taxable"), schema.tabs.Jobs.indexOf("Taxable") + 4), ["Taxable", "Subtotal", "Sales Tax", "Total Amount"], "Jobs should store tax fields separately");
@@ -377,6 +390,10 @@ assert.doesNotMatch(adminAppSource, /setInterval\s*\(/, "the CRM should not poll
 assert.match(adminAppSource, /function renderMileage\(/, "the CRM should include a dedicated Mileage Tracker screen");
 assert.match(adminAppSource, /Potential deductions are estimates/, "mileage deductions must be described as estimates rather than guaranteed savings");
 assert.match(adminAppSource, /data-log-mileage=/, "completed jobs should offer a Log Mileage action");
+assert.match(adminAppSource, /function renderOwnerFinance\(/, "the CRM should include an Owner Finance dashboard");
+assert.match(adminAppSource, /Estimated available cash—not a guarantee/, "available draw cash must be labeled as an estimate");
+assert.match(adminAppSource, /Record Personal Business Purchase/, "the dashboard should include the requested personal purchase shortcut");
+assert.match(adminAppSource, /Confirm this financial entry\?/, "financial entries should require confirmation before saving");
 
 const calendarBridgeSource = readFileSync(new URL("../tools/google-drive-upload-bridge.gs", import.meta.url), "utf8");
 assert.match(calendarBridgeSource, /setTag\("crmJobId"/, "Calendar events should store the CRM Job ID for duplicate prevention");

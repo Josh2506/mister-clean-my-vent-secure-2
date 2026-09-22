@@ -1,6 +1,6 @@
 const { requireSession } = require("./_shared/auth");
 const { getRowsBatch, withSheetsMetrics } = require("./_shared/google-sheets");
-const { customerToClient, dateDiffDays, expenseToClient, hasCustomerData, hasJobData, isArchived, jobToClient, todayDate } = require("./_shared/crm-records");
+const { cashCommitmentToClient, customerToClient, dateDiffDays, expenseToClient, hasCustomerData, hasJobData, isArchived, jobToClient, ownerTransactionToClient, todayDate } = require("./_shared/crm-records");
 const { mileageToClient } = require("./_shared/crm-records");
 const { getCalendarStatus } = require("./_shared/google-calendar");
 const { json } = require("./_shared/http");
@@ -30,7 +30,7 @@ exports.handler = async function handler(event) {
   try {
     const { result, metrics } = await withSheetsMetrics(async () => {
     const [rows, calendar] = await Promise.all([
-      getRowsBatch(["Customers", "Jobs", "Expenses", "Mileage", "Mileage Rates", "CRM Settings", "Mileage Documents"]),
+      getRowsBatch(["Customers", "Jobs", "Expenses", "Mileage", "Mileage Rates", "CRM Settings", "Mileage Documents", "Owner Transactions", "Cash Commitments"]),
       getCalendarStatus(),
     ]);
     const customerRows = rows.Customers;
@@ -81,6 +81,46 @@ exports.handler = async function handler(event) {
       categoryTotals[expense.category] = (categoryTotals[expense.category] || 0) + safeAmount;
       return total + safeAmount;
     }, 0);
+    const ownerTransactions = rows["Owner Transactions"].filter((row) => row["Transaction ID"] && !isArchived(row)).map(ownerTransactionToClient);
+    const cashCommitments = rows["Cash Commitments"].filter((row) => row["Commitment ID"] && !isArchived(row)).map(cashCommitmentToClient);
+    const ownerSettings = { RECONCILED_BANK_BALANCE: "", RECONCILED_BANK_BALANCE_AS_OF: "", RECONCILED_BANK_BALANCE_STATUS: "Unreconciled", FEDERAL_INCOME_TAX_RESERVE_PERCENT: "10", SELF_EMPLOYMENT_TAX_RESERVE_PERCENT: "15.3", NJ_INCOME_TAX_RESERVE_PERCENT: "3", MINIMUM_OPERATING_CASH_RESERVE: "1000", LLC_TAX_CLASSIFICATION: "Needs Confirmation", ...mileageSettings };
+    const currentMonth = today.slice(0, 7); const currentYear = today.slice(0, 4);
+    const amountFor = (type, period) => ownerTransactions.filter((tx) => tx.transactionType === type && tx.date.startsWith(period)).reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+    const paidCompletedJobs = jobs.filter((job) => job.paymentStatus === "Paid" && (job.jobStatus === "Completed" || job.dateCompleted));
+    const revenue = paidCompletedJobs.reduce((sum, job) => sum + Number(job.subtotal || job.finalPrice || job.quotedPrice || 0), 0);
+    const collectedSalesTax = paidCompletedJobs.reduce((sum, job) => sum + Number(job.salesTax || 0), 0);
+    const businessProfit = revenue - expenseTotal;
+    const federalTaxReserve = Math.max(0, businessProfit * Math.max(0, Number(ownerSettings.FEDERAL_INCOME_TAX_RESERVE_PERCENT || 0)) / 100);
+    const selfEmploymentTaxReserve = Math.max(0, businessProfit * Math.max(0, Number(ownerSettings.SELF_EMPLOYMENT_TAX_RESERVE_PERCENT || 0)) / 100);
+    const njIncomeTaxReserve = Math.max(0, businessProfit * Math.max(0, Number(ownerSettings.NJ_INCOME_TAX_RESERVE_PERCENT || 0)) / 100);
+    const configuredIncomeTaxReserve = federalTaxReserve + selfEmploymentTaxReserve + njIncomeTaxReserve;
+    const estimatedTaxPayments = ownerTransactions.filter((tx) => tx.transactionType === "Estimated Tax Payment").reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+    const salesTaxPayments = ownerTransactions.filter((tx) => tx.transactionType === "Sales Tax Payment").reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+    const salesTaxLiability = Math.max(0, collectedSalesTax - salesTaxPayments);
+    const openCommitments = cashCommitments.filter((item) => !["Paid", "Canceled"].includes(item.status));
+    const commitmentsTotal = openCommitments.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const bankBalance = Number(ownerSettings.RECONCILED_BANK_BALANCE);
+    const balanceDate = ownerSettings.RECONCILED_BANK_BALANCE_AS_OF;
+    const balanceAge = balanceDate ? Math.abs(dateDiffDays(balanceDate, today)) : null;
+    const balanceVerified = Number.isFinite(bankBalance) && balanceDate && ownerSettings.RECONCILED_BANK_BALANCE_STATUS === "Reconciled" && balanceAge <= 45;
+    const operatingReserve = Math.max(0, Number(ownerSettings.MINIMUM_OPERATING_CASH_RESERVE || 0));
+    const incomeTaxReserveRemaining = Math.max(0, configuredIncomeTaxReserve - estimatedTaxPayments);
+    const availableForDraw = balanceVerified ? Math.max(0, bankBalance - salesTaxLiability - commitmentsTotal - incomeTaxReserveRemaining - operatingReserve) : null;
+    const monthRevenue = paidCompletedJobs.filter((job) => String(job.dateCompleted || job.appointmentDate).startsWith(currentMonth)).reduce((sum, job) => sum + Number(job.totalAmount || job.subtotal || job.finalPrice || 0), 0);
+    const monthCashExpenses = expenses.filter((expense) => expense.date.startsWith(currentMonth) && expense.paymentSource !== "Personal Funds").reduce((sum, expense) => sum + Number(expense.totalAmount || 0), 0);
+    const monthContributions = amountFor("Owner's Contribution", currentMonth); const monthDraws = amountFor("Owner's Draw", currentMonth);
+    const monthTaxPayments = ownerTransactions.filter((tx) => ["Estimated Tax Payment", "Sales Tax Payment"].includes(tx.transactionType) && tx.date.startsWith(currentMonth)).reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+    const monthOtherCash = ownerTransactions.filter((tx) => tx.transactionType === "Other Cash Adjustment" && tx.date.startsWith(currentMonth)).reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+    const monthEndingCash = balanceVerified ? bankBalance : null;
+    const monthStartingCash = balanceVerified ? monthEndingCash - monthRevenue - monthContributions + monthCashExpenses + monthDraws + monthTaxPayments - monthOtherCash : null;
+    const ownerFinance = { transactions: ownerTransactions, commitments: cashCommitments, settings: ownerSettings,
+      summary: { currentRecordedCash: Number.isFinite(bankBalance) ? bankBalance : null, balanceAsOf: balanceDate, balanceVerified, balanceAge,
+        drawsMonth: amountFor("Owner's Draw", currentMonth), drawsYear: amountFor("Owner's Draw", currentYear), contributionsMonth: amountFor("Owner's Contribution", currentMonth), contributionsYear: amountFor("Owner's Contribution", currentYear),
+        revenue, businessProfit, expenseTotal, commitmentsTotal, federalTaxReserve, selfEmploymentTaxReserve, njIncomeTaxReserve, estimatedTaxReserve: configuredIncomeTaxReserve, incomeTaxReserveRemaining, estimatedTaxPayments,
+        collectedSalesTax, salesTaxPayments, salesTaxLiability, operatingReserve, availableForDraw,
+        monthly: { month: currentMonth, startingCash: monthStartingCash, customerPayments: monthRevenue, ownerContributions: monthContributions, businessCashExpenses: monthCashExpenses, ownerDraws: monthDraws, taxPayments: monthTaxPayments, otherCash: monthOtherCash, endingCash: monthEndingCash },
+        personalExpenseContributions: expenses.filter((e) => e.paymentSource === "Personal Funds" && e.ownerFundingTreatment === "Owner Contribution").reduce((s,e) => s + Number(e.totalAmount || 0), 0),
+        reimbursementsPending: expenses.filter((e) => e.paymentSource === "Personal Funds" && e.reimbursementStatus === "Awaiting Reimbursement").reduce((s,e) => s + Number(e.totalAmount || 0), 0) } };
 
     return {
       today,
@@ -112,6 +152,7 @@ exports.handler = async function handler(event) {
       mileageSettings: { DEFAULT_VEHICLE: "2007 Toyota Tacoma", HOME_OFFICE_QUALIFIED: "FALSE", ...mileageSettings },
       mileageDocuments: rows["Mileage Documents"].filter((row) => row["Document ID"] && !isArchived(row)).map((row) => ({ id: row["Document ID"], mileageId: row["Mileage ID"], category: row.Category, fileName: row["File Name"], mimeType: row["MIME Type"], googleDriveFileId: row["Google Drive File ID"], googleDriveFileUrl: row["Google Drive File URL"], uploadedAt: row["Uploaded At"] })),
       calendar,
+      ownerFinance,
     };
     });
     return json(200, result, {

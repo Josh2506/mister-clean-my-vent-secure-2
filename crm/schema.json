@@ -119,6 +119,11 @@
       "Receipt MIME Type",
       "Google Drive File ID",
       "Google Drive File URL",
+      "Payment Source",
+      "Owner Funding Treatment",
+      "Reimbursement Status",
+      "Reimbursement Date",
+      "Owner Transaction ID",
       "Created At",
       "Updated At",
       "Archived"
@@ -201,6 +206,19 @@
       "Setting Value",
       "Description",
       "Updated At"
+    ],
+    "Owner Transactions": [
+      "Transaction ID", "Date", "Owner Name", "Transaction Type", "Tax Category", "Amount", "Payment Method",
+      "Business Account", "Reference Number", "Notes", "Expense ID", "Deduplication Key",
+      "Document File Name", "Document MIME Type", "Google Drive File ID", "Google Drive File URL",
+      "Created At", "Updated At", "Archived"
+    ],
+    "Cash Commitments": [
+      "Commitment ID", "Due Date", "Category", "Description", "Amount", "Status", "Reference Number",
+      "Notes", "Created At", "Updated At", "Archived"
+    ],
+    "Owner Finance Audit": [
+      "Audit ID", "Entity Type", "Entity ID", "Action", "Changed At", "Changed By", "Before JSON", "After JSON"
     ]
   },
   "starterServices": [
