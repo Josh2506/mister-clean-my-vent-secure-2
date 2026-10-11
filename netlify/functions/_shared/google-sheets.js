@@ -123,7 +123,7 @@ function rowHasAnyValue(row = []) {
 }
 
 function getRecordIdPrefix(tabName) {
-  return ({ Customers: "cus_", Jobs: "job_", Reminders: "rem_", Leads: "lead_", Services: "svc_", Expenses: "exp_", "Job Photos": "photo_", "Job Documents": "doc_", Mileage: "mil_", "Mileage Documents": "mdoc_", "Mileage Rates": "rate_" })[tabName] || "";
+  return ({ Customers: "cus_", Jobs: "job_", Reminders: "rem_", Leads: "lead_", Services: "svc_", Expenses: "exp_", "Job Photos": "photo_", "Job Documents": "doc_", Mileage: "mil_", "Mileage Documents": "mdoc_", "Mileage Rates": "rate_", Vehicles: "veh_", "MileIQ Imports": "miqimp_" })[tabName] || "";
 }
 
 function findShiftedRecordStart(row = [], tabName) {
@@ -286,6 +286,19 @@ async function appendRecord(tabName, record) {
   return record;
 }
 
+async function appendRecords(tabName, records) {
+  if (!records.length) return records;
+  const expectedHeaders = getTabHeaders(tabName);
+  const layout = await getLayout(tabName);
+  const values = records.map((record) => recordValuesForLayout(record, layout, expectedHeaders));
+  const tableRange = encodeURIComponent(`${a1TabName(tabName)}!A:AZ`);
+  await sheetsRequest(`/values/${tableRange}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
+    method: "POST",
+    body: JSON.stringify({ values }),
+  });
+  return records;
+}
+
 async function updateRecord(tabName, rowNumber, record) {
   const expectedHeaders = getTabHeaders(tabName);
   const layout = await getLayout(tabName);
@@ -306,4 +319,4 @@ function clearSheetsCachesForTests() {
   layoutCache.clear();
 }
 
-module.exports = { appendRecord, clearSheetsCachesForTests, findRecordById, getRows, getRowsBatch, getTabHeaders, nextAppendRow, updateRecord, valuesToRecords, withSheetsMetrics };
+module.exports = { appendRecord, appendRecords, clearSheetsCachesForTests, findRecordById, getRows, getRowsBatch, getTabHeaders, nextAppendRow, updateRecord, valuesToRecords, withSheetsMetrics };

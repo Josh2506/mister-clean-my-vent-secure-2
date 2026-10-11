@@ -3,6 +3,7 @@ const { getRowsBatch, withSheetsMetrics } = require("./_shared/google-sheets");
 const { cashCommitmentToClient, customerToClient, dateDiffDays, expenseToClient, hasCustomerData, hasJobData, isArchived, jobToClient, ownerTransactionToClient, todayDate } = require("./_shared/crm-records");
 const { mileageToClient } = require("./_shared/crm-records");
 const { getCalendarStatus } = require("./_shared/google-calendar");
+const { configuredRates } = require("./crm-mileage");
 const { json } = require("./_shared/http");
 
 const EXPENSE_CATEGORIES = ["Gas / Fuel", "Parts & Materials", "Tools & Equipment", "Vehicle / Maintenance", "Advertising / Marketing", "Subcontractor / Labor", "Office / Business Supplies", "Insurance", "Other Business Expense"];
@@ -30,7 +31,7 @@ exports.handler = async function handler(event) {
   try {
     const { result, metrics } = await withSheetsMetrics(async () => {
     const [rows, calendar] = await Promise.all([
-      getRowsBatch(["Customers", "Jobs", "Expenses", "Mileage", "Mileage Rates", "CRM Settings", "Mileage Documents", "Owner Transactions", "Cash Commitments"]),
+      getRowsBatch(["Customers", "Jobs", "Expenses", "Mileage", "Mileage Rates", "CRM Settings", "Mileage Documents", "Vehicles", "MileIQ Imports", "Owner Transactions", "Cash Commitments"]),
       getCalendarStatus(),
     ]);
     const customerRows = rows.Customers;
@@ -40,18 +41,17 @@ exports.handler = async function handler(event) {
     const expenses = rows.Expenses.filter((row) => row["Expense ID"] && !isArchived(row)).map(expenseToClient);
     const mileage = rows.Mileage.filter((row) => row["Mileage ID"] && !isArchived(row)).map(mileageToClient)
       .sort((a, b) => `${b.date}${b.createdAt}`.localeCompare(`${a.date}${a.createdAt}`));
-    const defaultMileageRates = [
-      { id: "rate_2026_h1", start: "2026-01-01", end: "2026-06-30", rate: 0.725, source: "IRS standard mileage rate", active: true },
-      { id: "rate_2026_h2", start: "2026-07-01", end: "2026-12-31", rate: 0.76, source: "IRS standard mileage rate", active: true },
-    ];
-    const mileageRateMap = new Map(defaultMileageRates.map((rate) => [rate.id, rate]));
-    rows["Mileage Rates"].filter((row) => row["Rate ID"] && String(row.Active || "TRUE").toUpperCase() !== "FALSE")
-      .forEach((row) => mileageRateMap.set(row["Rate ID"], { id: row["Rate ID"], start: row["Effective Start"], end: row["Effective End"], rate: Number(row["Business Rate"] || 0), source: row.Source, notes: row.Notes, active: true }));
-    const mileageRates = [...mileageRateMap.values()].sort((a, b) => a.start.localeCompare(b.start));
+    const mileageRates = configuredRates(rows["Mileage Rates"]);
     const mileageSettings = Object.fromEntries(rows["CRM Settings"].filter((row) => row["Setting Key"]).map((row) => [row["Setting Key"], row["Setting Value"]]));
     const customerById = new Map(customers.map((customer) => [customer.id, customer]));
     const jobById = new Map(jobs.map((job) => [job.id, job]));
     const today = todayDate();
+    const mileageMonth = today.slice(0, 7);
+    const mileageYear = today.slice(0, 4);
+    const mileageTotals = (period) => mileage.filter((entry) => String(entry.date || "").startsWith(period)).reduce((totals, entry) => ({
+      miles: totals.miles + Number(entry.businessMiles || 0),
+      deduction: totals.deduction + Number(entry.potentialDeduction || 0),
+    }), { miles: 0, deduction: 0 });
 
     const todayJobs = jobs
       .filter((job) => job.appointmentDate === today && job.jobStatus !== "Canceled")
@@ -161,6 +161,9 @@ exports.handler = async function handler(event) {
       mileage,
       mileageRates,
       mileageSettings: { DEFAULT_VEHICLE: "2007 Toyota Tacoma", HOME_OFFICE_QUALIFIED: "FALSE", ...mileageSettings },
+      mileageSummary: { month: mileageTotals(mileageMonth), year: mileageTotals(mileageYear) },
+      mileageImports: rows["MileIQ Imports"].filter((row) => row["Import ID"]).sort((a, b) => String(b["Imported At"]).localeCompare(String(a["Imported At"]))).slice(0, 10).map((row) => ({ id: row["Import ID"], reportName: row["Report Name"], importedAt: row["Imported At"], inserted: Number(row["Rows Inserted"] || 0), duplicates: Number(row["Duplicates Skipped"] || 0), rejected: Number(row["Rows Rejected"] || 0), status: row.Status })),
+      vehicles: rows.Vehicles.filter((row) => row["Vehicle ID"] && String(row.Active || "TRUE").toUpperCase() !== "FALSE").map((row) => ({ id: row["Vehicle ID"], displayName: row["Display Name"], mileIqName: row["MileIQ Vehicle Name"], make: row.Make, model: row.Model, year: row.Year, default: String(row.Default).toUpperCase() === "TRUE" })),
       mileageDocuments: rows["Mileage Documents"].filter((row) => row["Document ID"] && !isArchived(row)).map((row) => ({ id: row["Document ID"], mileageId: row["Mileage ID"], category: row.Category, fileName: row["File Name"], mimeType: row["MIME Type"], googleDriveFileId: row["Google Drive File ID"], googleDriveFileUrl: row["Google Drive File URL"], uploadedAt: row["Uploaded At"] })),
       calendar,
       ownerFinance,

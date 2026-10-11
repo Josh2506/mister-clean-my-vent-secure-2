@@ -4,6 +4,8 @@ const { id, isArchived, mileageFromBody, mileageToClient, nowIso } = require("./
 const { json, readJson } = require("./_shared/http");
 
 const DEFAULT_RATES = [
+  { id: "rate_2024", start: "2024-01-01", end: "2024-12-31", rate: 0.67, source: "IRS standard mileage rate" },
+  { id: "rate_2025", start: "2025-01-01", end: "2025-12-31", rate: 0.70, source: "IRS standard mileage rate" },
   { id: "rate_2026_h1", start: "2026-01-01", end: "2026-06-30", rate: 0.725, source: "IRS standard mileage rate" },
   { id: "rate_2026_h2", start: "2026-07-01", end: "2026-12-31", rate: 0.76, source: "IRS standard mileage rate" },
 ];
@@ -116,3 +118,5 @@ exports.handler = async function handler(event) {
 };
 
 module.exports.DEFAULT_RATES = DEFAULT_RATES;
+module.exports.configuredRates = configuredRates;
+module.exports.effectiveRate = effectiveRate;

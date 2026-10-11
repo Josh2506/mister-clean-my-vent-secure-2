@@ -70,6 +70,7 @@ Add these in Netlify under Site configuration, then Environment variables:
 - `CRM_SESSION_SECRET`
 - `CRM_RATE_LIMIT_WINDOW_MS`
 - `CRM_RATE_LIMIT_MAX_REQUESTS`
+- `MILEIQ_IMPORT_SECRET`
 
 Use `.env.example` only as a template. Do not paste real keys into GitHub.
 
@@ -85,6 +86,8 @@ For Calendar:
 Calendar sync is intentionally one-way from the CRM. A scheduled/confirmed work order creates one event; rescheduling updates the stored event ID; canceling marks that event canceled. No customer guest or invitation is sent.
 
 Mileage uses the `Mileage`, `Mileage Documents`, `Mileage Rates`, and `CRM Settings` tabs. The built-in 2026 rate table is 0.725 per mile from January 1 through June 30 and 0.76 per mile from July 1 through December 31. Rates remain editable in the CRM. Potential deductions are estimates, not guaranteed savings or final tax advice.
+
+MileIQ Unlimited reports are imported through the separate `tools/mileiq-gmail-importer.gs` Apps Script project. Add the matching `tools/mileiq-appsscript.json` manifest, set `MILEIQ_IMPORT_ENDPOINT` and `MILEIQ_IMPORT_SECRET` in that project's Script Properties, then run `installMileIQImporter` once to authorize Gmail labels and the hourly trigger. The importer processes only MileIQ report emails with a CSV download link, imports only Business-classified trips, and labels successful messages `MileIQ/Imported`. Individual MileIQ Unlimited does not provide an official trip API or automatic scheduled detailed reports; the Gmail portion becomes automatic after a report is requested from MileIQ.
 
 To create `CRM_ADMIN_PASSWORD_HASH`, run:
 

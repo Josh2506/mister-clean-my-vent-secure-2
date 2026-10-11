@@ -17,6 +17,9 @@ const state = {
   mileageRates: [],
   mileageSettings: { DEFAULT_VEHICLE: "2007 Toyota Tacoma", HOME_OFFICE_QUALIFIED: "FALSE" },
   mileageDocuments: [],
+  mileageSummary: { month: { miles: 0, deduction: 0 }, year: { miles: 0, deduction: 0 } },
+  mileageImports: [],
+  vehicles: [],
   mileageYear: "",
   calendar: { connected: false },
   ownerFinance: { transactions: [], commitments: [], settings: {}, summary: {} },
@@ -166,7 +169,7 @@ function shell() {
         <button type="button" data-screen="due">Due Soon</button>
         <button type="button" data-screen="expenses">Expenses</button>
         <button type="button" data-screen="sales-tax">Sales Tax</button>
-        <button type="button" data-screen="mileage">Mileage</button>
+        <button type="button" data-screen="mileage">Business Mileage</button>
         <button type="button" data-screen="owner-finance">Owner Finance</button>
         <button type="button" data-screen="profile">Profile</button>
       </nav>
@@ -495,6 +498,15 @@ function renderDashboard() {
         <div class="crm-list">${renderJobCards(monthly.completedJobs, true)}</div>
       </section>
       <section class="crm-panel crm-col-12">
+        <div class="crm-panel-heading"><div><h2>Business Mileage</h2><p>MileIQ and manually recorded business driving, calculated with the date-effective IRS rate.</p></div><button class="crm-btn secondary" type="button" data-screen-link="mileage">View Mileage</button></div>
+        <div class="crm-stats crm-monthly-stats">
+          <div class="crm-stat"><strong>${Number(state.mileageSummary.month?.miles || 0).toFixed(1)}</strong><span>Business miles this month</span></div>
+          <div class="crm-stat"><strong>${formatMoney(state.mileageSummary.month?.deduction)}</strong><span>Estimated deduction this month</span></div>
+          <div class="crm-stat"><strong>${Number(state.mileageSummary.year?.miles || 0).toFixed(1)}</strong><span>Business miles this year</span></div>
+          <div class="crm-stat"><strong>${formatMoney(state.mileageSummary.year?.deduction)}</strong><span>Estimated deduction this year</span></div>
+        </div>
+      </section>
+      <section class="crm-panel crm-col-12">
         <h2>Unpaid or Partially Paid</h2>
         <div class="crm-list">${renderJobCards(dashboard.unpaidJobs, true)}</div>
       </section>
@@ -509,6 +521,7 @@ function renderDashboard() {
   document.querySelector("#add-expense-button").addEventListener("click", () => openExpenseModal());
   document.querySelectorAll("[data-owner-action]").forEach((button) => button.addEventListener("click", () => openOwnerFinanceModal(button.dataset.ownerAction)));
   document.querySelector("[data-screen-link='owner-finance']").addEventListener("click", () => switchScreen("owner-finance"));
+  document.querySelector("[data-screen-link='mileage']").addEventListener("click", () => switchScreen("mileage"));
   document.querySelector("#refresh-button").addEventListener("click", showDashboard);
   document.querySelector("#dashboard-month").addEventListener("change", (event) => {
     state.dashboardMonth = event.target.value;
@@ -655,7 +668,9 @@ function renderMileage() {
   const years = mileageYears(); if (!state.mileageYear || !years.includes(state.mileageYear)) state.mileageYear = years[0];
   const yearEntries = mileagePeriodEntries("year"); const year = mileageSummary(yearEntries); const month = mileageSummary(mileagePeriodEntries("month")); const week = mileageSummary(mileagePeriodEntries("week"));
   const rates = state.mileageRates || [];
-  screen.innerHTML = `<div class="crm-page-title"><h1>Mileage Tracker</h1><p>Business mileage records for the 2007 Toyota Tacoma, with review flags and supporting Drive documents.</p><div class="crm-actions"><button class="crm-btn" id="mileage-add" type="button">Log Mileage</button><button class="crm-btn secondary" id="mileage-export" type="button">Export CSV</button><button class="crm-btn secondary" id="mileage-print" type="button">Print / Save PDF</button></div></div>
+  const latestImport = state.mileageImports?.[0];
+  screen.innerHTML = `<div class="crm-page-title"><h1>Business Mileage</h1><p>MileIQ-imported and manually recorded business mileage, with review flags and supporting Drive documents.</p><div class="crm-actions"><button class="crm-btn" id="mileage-add" type="button">Log Mileage</button><button class="crm-btn secondary" id="mileage-export" type="button">Export CSV</button><button class="crm-btn secondary" id="mileage-print" type="button">Print / Save PDF</button></div></div>
+    <section class="crm-panel"><div class="crm-panel-heading"><div><h2>MileIQ Automatic Import</h2><p>${latestImport ? `Last import ${escapeHtml(formatDisplayDate(String(latestImport.importedAt).slice(0, 10)))} · ${latestImport.inserted} added · ${latestImport.duplicates} duplicates skipped${latestImport.rejected ? ` · ${latestImport.rejected} rejected` : ""}` : "No MileIQ report has been imported yet."}</p></div><span class="crm-badge ${latestImport?.status === "Completed" ? "success" : "warning"}">${escapeHtml(latestImport?.status || "Needs setup")}</span></div><p class="crm-help">MileIQ Unlimited emails secure CSV download links. After the Gmail importer is authorized, new requested reports are checked hourly and only Business-classified trips are added.</p></section>
     <section class="crm-panel"><div class="crm-panel-heading"><div><h2>${escapeHtml(state.mileageYear)} Mileage Summary</h2><p>Potential deductions are estimates based on eligible business miles and the configured IRS rate—not guaranteed tax savings.</p></div><div class="crm-field crm-month-picker"><label for="mileage-year">Year</label><select id="mileage-year">${years.map((value) => `<option ${value === state.mileageYear ? "selected" : ""}>${value}</option>`).join("")}</select></div></div>
       <div class="crm-stats crm-mileage-stats"><div class="crm-stat"><strong>${year.business.toFixed(1)}</strong><span>Business miles this year</span></div><div class="crm-stat"><strong>${month.business.toFixed(1)}</strong><span>Business miles this month</span></div><div class="crm-stat"><strong>${week.business.toFixed(1)}</strong><span>Business miles this week</span></div><div class="crm-stat"><strong>${formatMoney(year.deduction)}</strong><span>Potential mileage deduction</span></div><div class="crm-stat"><strong>${year.personal.toFixed(1)}</strong><span>Personal / nonqualifying</span></div><div class="crm-stat"><strong>${year.total.toFixed(1)}</strong><span>Total annual miles logged</span></div><div class="crm-stat"><strong>${year.startOdometer}</strong><span>Annual starting odometer</span></div><div class="crm-stat"><strong>${year.endOdometer}</strong><span>Annual ending odometer</span></div><div class="crm-stat"><strong>${year.businessUse.toFixed(1)}%</strong><span>Business-use percentage</span></div><div class="crm-stat"><strong>${formatMoney(year.parking)}</strong><span>Parking & tolls (separate)</span></div></div>
     </section>
@@ -1471,6 +1486,9 @@ async function loadData(renderAll = true) {
   state.mileageRates = dashboardData.mileageRates || [];
   state.mileageSettings = dashboardData.mileageSettings || state.mileageSettings;
   state.mileageDocuments = dashboardData.mileageDocuments || [];
+  state.mileageSummary = dashboardData.mileageSummary || state.mileageSummary;
+  state.mileageImports = dashboardData.mileageImports || [];
+  state.vehicles = dashboardData.vehicles || [];
   state.calendar = dashboardData.calendar || { connected: false };
   state.ownerFinance = dashboardData.ownerFinance || { transactions: [], commitments: [], settings: {}, summary: {} };
   if (state.selectedCustomer) {

@@ -9,6 +9,7 @@ process.env.CRM_ADMIN_EMAILS = "owner@example.com";
 process.env.CRM_SESSION_SECRET = "this-is-a-long-random-test-session-secret";
 process.env.CRM_RATE_LIMIT_WINDOW_MS = "60000";
 process.env.CRM_RATE_LIMIT_MAX_REQUESTS = "100";
+process.env.MILEIQ_IMPORT_SECRET = "test-mileiq-import-secret";
 
 const auth = require("../netlify/functions/_shared/auth.js");
 const customers = require("../netlify/functions/crm-customers.js");
@@ -18,6 +19,8 @@ const expensesApi = require("../netlify/functions/crm-expenses.js");
 const jobAssetsApi = require("../netlify/functions/crm-job-assets.js");
 const fileApi = require("../netlify/functions/crm-file.js");
 const mileageApi = require("../netlify/functions/crm-mileage.js");
+const mileIqImportApi = require("../netlify/functions/crm-mileiq-import.js");
+const mileIq = require("../netlify/functions/_shared/mileiq.js");
 const calendarApi = require("../netlify/functions/crm-calendar.js");
 const ownerFinanceApi = require("../netlify/functions/crm-owner-finance.js");
 const login = require("../netlify/functions/crm-login.js");
@@ -190,6 +193,17 @@ const reconstructedMileage = records.mileageFromBody({ date: "2026-08-10", milea
 assert.equal(reconstructedMileage["Review Status"], "Needs Review", "reconstructed mileage should be clearly flagged for review");
 assert.equal(reconstructedMileage["Starting Odometer"], "", "reconstructed mileage must not be presented as an actual odometer record");
 assert.throws(() => records.mileageFromBody({ mileageSource: "Odometer", startingOdometer: "200", endingOdometer: "199" }, {}, 0.725), /cannot be lower/, "invalid odometer sequences must be rejected");
+assert.equal(mileageApi.effectiveRate("2025-06-01", mileageApi.configuredRates([])), 0.70, "historical imports should use the rate for the trip year");
+assert.equal(mileageApi.effectiveRate("2026-07-01", mileageApi.configuredRates([])), 0.76, "midyear IRS rate changes should use the trip date");
+
+const sanitizedMileIqCsv = `MileIQ Detailed Report\nSTART_DATE*,END_DATE*,CATEGORY*,START*,STOP*,RATE,MILES*,MILES_VALUE,PARKING,TOLLS,TOTAL,VEHICLE,PURPOSE,NOTES\n10/01/2026 08:15,10/01/2026 08:45,Business,"1 Main St, Somerville, NJ","2 Oak St, Bridgewater, NJ",0.76,12.5,9.50,1.00,0.50,11.00,Toyota Tacoma 2007,Customer visit,"Vent service, follow-up"\n10/01/2026 18:00,10/01/2026 18:10,Personal,"2 Oak St, Bridgewater, NJ","3 Elm St, Raritan, NJ",0.76,2,1.52,0,0,1.52,Toyota Tacoma 2007,Personal,`;
+const parsedMileIq = mileIq.parseMileIqReport(sanitizedMileIqCsv);
+assert.equal(parsedMileIq.trips.length, 2, "MileIQ detailed reports should parse every valid trip");
+assert.equal(parsedMileIq.trips[0].startDateTime, "2026-10-01T08:15:00", "MileIQ timestamps should remain separate from the trip date");
+assert.equal(parsedMileIq.trips[0].notes, "Vent service, follow-up", "quoted CSV fields should preserve commas");
+assert.equal(parsedMileIq.trips[0].sourceHash, mileIq.tripFingerprint(parsedMileIq.trips[0]), "MileIQ trips should receive deterministic duplicate keys");
+const rejectedMileIqImport = await mileIqImportApi.handler({ httpMethod: "POST", headers: {}, body: JSON.stringify({ csv: sanitizedMileIqCsv, secret: "wrong" }) });
+assert.equal(rejectedMileIqImport.statusCode, 401, "MileIQ imports must require a separate shared secret");
 
 const expense = records.expenseFromBody({
   date: "2026-08-26",
@@ -232,6 +246,9 @@ assert.ok(schema.tabs["Owner Transactions"].includes("Deduplication Key"), "owne
 assert.ok(schema.tabs.Expenses.includes("Owner Funding Treatment"), "personal expense funding should be tracked without duplicating the expense");
 assert.ok(schema.tabs["Owner Finance Audit"].includes("Before JSON"), "owner finance corrections should preserve an audit trail");
 assert.ok(schema.tabs.Mileage.includes("Personal or Nonqualifying Miles"), "Mileage should retain nonqualifying mileage for annual business-use reporting");
+assert.ok(schema.tabs.Mileage.includes("MileIQ Source Hash"), "MileIQ mileage should retain a stable duplicate-prevention key");
+assert.ok(schema.tabs.Vehicles.includes("MileIQ Vehicle Name"), "vehicles should support MileIQ name mapping and future additions");
+assert.ok(schema.tabs["MileIQ Imports"].includes("CSV Hash"), "MileIQ report imports should be audited and deduplicated");
 assert.deepEqual(schema.tabs["Mileage Rates"].slice(1, 4), ["Effective Start", "Effective End", "Business Rate"], "mileage rates should be date-effective and configurable");
 assert.deepEqual(schema.tabs.Jobs.slice(schema.tabs.Jobs.indexOf("Taxable"), schema.tabs.Jobs.indexOf("Taxable") + 4), ["Taxable", "Subtotal", "Sales Tax", "Total Amount"], "Jobs should store tax fields separately");
 assert.ok(!schema.tabs.Expenses.some((header) => /base64|binary/i.test(header)), "Sheets must not contain raw file columns");

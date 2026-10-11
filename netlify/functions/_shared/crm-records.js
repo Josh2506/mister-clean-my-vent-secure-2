@@ -545,6 +545,10 @@ function mileageToClient(record) {
     mileageSource: readRecordValue(record, "Mileage Source"), reviewStatus: readRecordValue(record, "Review Status"), customerId: readRecordValue(record, "Customer ID"), jobId: readRecordValue(record, "Job ID"),
     irsRate: readRecordValue(record, "IRS Rate"), potentialDeduction: readRecordValue(record, "Potential Deduction"), homeOfficeQualified: readRecordValue(record, "Home Office Qualified") === "TRUE",
     parkingAndTolls: readRecordValue(record, "Parking and Tolls"), notes: readRecordValue(record, "Notes"), createdAt: readRecordValue(record, "Created At"), updatedAt: readRecordValue(record, "Updated At"),
+    startDateTime: readRecordValue(record, "Start Date Time"), endDateTime: readRecordValue(record, "End Date Time"), endLocation: readRecordValue(record, "End Location"),
+    mileIqCategory: readRecordValue(record, "MileIQ Category"), mileIqPurpose: readRecordValue(record, "MileIQ Purpose"), mileIqVehicle: readRecordValue(record, "MileIQ Vehicle"),
+    mileIqReportId: readRecordValue(record, "MileIQ Report ID"), mileIqMessageId: readRecordValue(record, "MileIQ Message ID"), mileIqSourceHash: readRecordValue(record, "MileIQ Source Hash"),
+    mileIqReportedRate: readRecordValue(record, "MileIQ Reported Rate"), mileIqImportedAt: readRecordValue(record, "MileIQ Imported At"),
   };
 }
 

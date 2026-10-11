@@ -1,4 +1,4 @@
-const CRM_SW_VERSION = "2026-09-22-owner-finance";
+const CRM_SW_VERSION = "2026-10-10-mileiq-import";
 
 self.addEventListener("install", () => {
   self.skipWaiting();

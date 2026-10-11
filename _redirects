@@ -13,6 +13,7 @@ http://www.mistercleanmyvent.com/* https://www.mistercleanmyvent.com/:splat 301!
 /api/crm/job-assets /.netlify/functions/crm-job-assets 200
 /api/crm/mileage /.netlify/functions/crm-mileage 200
 /api/crm/mileage-assets /.netlify/functions/crm-mileage-assets 200
+/api/crm/mileiq-import /.netlify/functions/crm-mileiq-import 200
 /api/crm/calendar /.netlify/functions/crm-calendar 200
 /api/crm/owner-finance /.netlify/functions/crm-owner-finance 200
 /api/crm/file /.netlify/functions/crm-file 200

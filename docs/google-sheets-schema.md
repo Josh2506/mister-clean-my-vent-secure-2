@@ -62,6 +62,8 @@ Create a private Google Sheet named `Mister Clean My Vent CRM` with these tabs.
 
 The `Mileage` tab stores odometer, GPS, reconstructed, and manual records with total, personal/nonqualifying, and eligible business miles kept separately. It also records location, purpose, review status, customer/job links, the date-effective IRS rate, estimated deduction, home-office qualification snapshot, parking/tolls, and audit timestamps.
 
+MileIQ imports extend these rows with start/end timestamps, end location, MileIQ classification/purpose/vehicle, report and Gmail message identifiers, a stable source fingerprint, MileIQ's reported rate, and import timestamp. Raw miles stay separate from the CRM's date-effective deduction calculation.
+
 ## Mileage Documents
 
 Stores Drive metadata for GPS screenshots, route records, and other supporting files linked by Mileage ID. File bytes remain in the existing protected CRM Drive folder.
@@ -76,6 +78,14 @@ Stores Drive metadata for GPS screenshots, route records, and other supporting f
 ## CRM Settings
 
 Stores the default vehicle (`2007 Toyota Tacoma`) and the current documented home-office qualification setting. This setting does not automatically classify first/last trips as deductible.
+
+## Vehicles
+
+Maps MileIQ vehicle names to CRM display names. The initial active/default mapping is `Toyota Tacoma 2007` → `2007 Toyota Tacoma`; additional vehicles can be added without changing imported history.
+
+## MileIQ Imports
+
+Stores one audit row per processed report, including Gmail/report identifiers, CSV hash, counts for found, business, inserted, duplicate, and rejected rows, status, and error summary.
 
 ## Reminders
 

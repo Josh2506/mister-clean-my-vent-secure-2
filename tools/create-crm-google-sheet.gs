@@ -102,9 +102,11 @@ const CRM_TABS = {
     "Active",
     "Notes"
   ],
-  Mileage: ["Mileage ID", "Date", "Vehicle", "Entry Type", "Starting Odometer", "Ending Odometer", "Total Miles", "Personal or Nonqualifying Miles", "Eligible Business Miles", "Starting Location", "Destinations", "Business Purpose", "Mileage Source", "Review Status", "Customer ID", "Job ID", "IRS Rate", "Potential Deduction", "Home Office Qualified", "Parking and Tolls", "Notes", "Created At", "Updated At", "Archived"],
+  Mileage: ["Mileage ID", "Date", "Vehicle", "Entry Type", "Starting Odometer", "Ending Odometer", "Total Miles", "Personal or Nonqualifying Miles", "Eligible Business Miles", "Starting Location", "Destinations", "Business Purpose", "Mileage Source", "Review Status", "Customer ID", "Job ID", "IRS Rate", "Potential Deduction", "Home Office Qualified", "Parking and Tolls", "Notes", "Start Date Time", "End Date Time", "End Location", "MileIQ Category", "MileIQ Purpose", "MileIQ Vehicle", "MileIQ Report ID", "MileIQ Message ID", "MileIQ Source Hash", "MileIQ Reported Rate", "MileIQ Imported At", "Created At", "Updated At", "Archived"],
   "Mileage Documents": ["Document ID", "Mileage ID", "Category", "File Name", "MIME Type", "Google Drive File ID", "Google Drive File URL", "Uploaded At", "Archived"],
   "Mileage Rates": ["Rate ID", "Effective Start", "Effective End", "Business Rate", "Source", "Notes", "Active", "Updated At"],
+  Vehicles: ["Vehicle ID", "Display Name", "MileIQ Vehicle Name", "Make", "Model", "Year", "Active", "Default", "Updated At"],
+  "MileIQ Imports": ["Import ID", "Gmail Message ID", "Report ID", "Report Name", "CSV Hash", "Imported At", "Rows Found", "Business Rows", "Rows Inserted", "Duplicates Skipped", "Rows Rejected", "Status", "Error Summary"],
   "CRM Settings": ["Setting Key", "Setting Value", "Description", "Updated At"]
 };
 
@@ -140,6 +142,11 @@ function createMisterCleanMyVentCrmSheet() {
       sheet.getRange(2, 1, 2, headings.length).setValues([
         ["rate_2026_h1", "2026-01-01", "2026-06-30", "0.725", "IRS standard mileage rate", "January through June 2026", "TRUE", new Date().toISOString()],
         ["rate_2026_h2", "2026-07-01", "2026-12-31", "0.76", "IRS standard mileage rate", "July through December 2026", "TRUE", new Date().toISOString()]
+      ]);
+    }
+    if (tabName === "Vehicles") {
+      sheet.getRange(2, 1, 1, headings.length).setValues([
+        ["veh_tacoma_2007", "2007 Toyota Tacoma", "Toyota Tacoma 2007", "Toyota", "Tacoma", "2007", "TRUE", "TRUE", new Date().toISOString()]
       ]);
     }
     if (tabName === "CRM Settings") {
