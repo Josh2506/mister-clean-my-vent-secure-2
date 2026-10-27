@@ -36,6 +36,8 @@ const documentTypes = ["Estimate", "Invoice", "Receipt", "Service Certificate", 
 
 const serviceOptions = [
   "Dryer Vent Cleaning",
+  "Air Duct Cleaning — Residential (Cleaning Only)",
+  "Air Duct Cleaning — Commercial (Cleaning Only)",
   "Exterior Dryer Vent Cleaning",
   "Bird Nest Removal",
   "Dryer Vent Inspection",
@@ -155,7 +157,7 @@ function shell() {
     <section class="crm-shell">
       <header class="crm-header">
         <div class="crm-brand">
-          <img src="/assets/mister-clean-my-vent-logo.png" alt="Mister Clean My Vent">
+          <img src="/assets/mister-clean-my-vent-logo-vent-cleaning-and-more.png" alt="Mister Clean My Vent">
           <div>
             <strong>Mister Clean My Vent CRM</strong>
             <span id="crm-user">Private dashboard</span>

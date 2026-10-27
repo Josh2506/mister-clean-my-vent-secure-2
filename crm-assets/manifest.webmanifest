@@ -9,17 +9,16 @@
   "description": "Private customer and service dashboard for Mister Clean My Vent.",
   "icons": [
     {
-      "src": "/assets/mister-clean-my-vent-logo.png",
+      "src": "/assets/mister-clean-my-vent-logo-vent-cleaning-and-more.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/assets/mister-clean-my-vent-logo.png",
+      "src": "/assets/mister-clean-my-vent-logo-vent-cleaning-and-more.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     }
   ]
 }
-

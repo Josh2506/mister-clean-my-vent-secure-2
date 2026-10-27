@@ -426,6 +426,14 @@ p {
   border-color: rgba(150, 191, 32, 0.42);
 }
 
+.service-kicker {
+  margin: -4px 0 14px;
+  color: var(--moss);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .service-group .service-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -617,6 +625,27 @@ p {
 .service-action-card--house-photos .service-action-photos img {
   height: auto;
   aspect-ratio: 4 / 3;
+}
+
+.air-duct-action-photos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px 10px 0;
+}
+
+.air-duct-action-photos img {
+  display: block;
+  width: 100%;
+  height: clamp(138px, 14vw, 178px);
+  object-fit: cover;
+  object-position: center;
+  border-radius: 6px;
+  background: #e9e5d2;
+}
+
+.air-duct-action-photos .air-duct-action-before-after {
+  object-position: center;
 }
 
 .service-action-copy {
@@ -1149,6 +1178,8 @@ p {
 .about-photo {
   position: sticky;
   top: 108px;
+  display: grid;
+  gap: 16px;
 }
 
 .about-photo img {
@@ -1160,6 +1191,11 @@ p {
   border: 2px solid rgba(79, 127, 24, 0.18);
   border-radius: 8px;
   box-shadow: 0 18px 46px rgba(19, 33, 13, 0.14);
+}
+
+.about-photo img + img {
+  max-height: 300px;
+  object-position: center;
 }
 
 .about-copy {
@@ -1514,6 +1550,23 @@ textarea:focus {
   background: #0e1c09;
 }
 
+.footer-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.footer-brand img {
+  display: block;
+  width: 112px;
+  height: 64px;
+  object-fit: contain;
+}
+
+.footer-brand > div {
+  display: grid;
+}
+
 .site-footer strong,
 .site-footer span {
   display: block;
@@ -1563,7 +1616,7 @@ textarea:focus {
   }
 }
 
-@media (max-width: 920px) {
+@media (max-width: 1080px) {
   .nav,
   .header-call {
     display: none;
@@ -1645,6 +1698,10 @@ textarea:focus {
   .about-photo img {
     max-height: 420px;
   }
+
+  .about-photo img + img {
+    max-height: 360px;
+  }
 }
 
 @media (max-width: 560px) {
@@ -1715,6 +1772,19 @@ textarea:focus {
     aspect-ratio: auto;
   }
 
+  .air-duct-action-photos {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .air-duct-action-photos img {
+    height: 150px;
+  }
+
+  .air-duct-action-photos .air-duct-action-before-after {
+    grid-column: 1 / -1;
+    height: 220px;
+  }
+
   .summer-photo-grid img {
     height: 190px;
   }
@@ -1725,6 +1795,10 @@ textarea:focus {
 
   .site-footer {
     flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .footer-brand {
     align-items: flex-start;
   }
 

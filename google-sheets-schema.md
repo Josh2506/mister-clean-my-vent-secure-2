@@ -108,6 +108,8 @@ Starter service rows:
 | Service ID | Service Name | Default Price | Default Reminder Months | Active | Notes |
 | --- | --- | --- | --- | --- | --- |
 | svc_dryer_vent_cleaning | Dryer Vent Cleaning |  | 12 | TRUE | Annual reminder by default |
+| svc_air_duct_cleaning_residential | Air Duct Cleaning — Residential (Cleaning Only) |  |  | TRUE | Estimate based on systems, property size, access, and scope |
+| svc_air_duct_cleaning_commercial | Air Duct Cleaning — Commercial (Cleaning Only) |  |  | TRUE | Estimate based on systems, property size, access, and scope |
 | svc_exterior_dryer_vent_cleaning | Exterior Dryer Vent Cleaning |  | 12 | TRUE |  |
 | svc_gutter_cleaning | Gutter Cleaning |  | 6 | TRUE |  |
 | svc_house_washing | House Washing |  | 24 | TRUE |  |
@@ -115,4 +117,3 @@ Starter service rows:
 | svc_driveway_cleaning | Driveway Cleaning |  | 12 | TRUE |  |
 | svc_pressure_washing | Pressure Washing |  | 12 | TRUE |  |
 | svc_other | Other |  |  | TRUE |  |
-
