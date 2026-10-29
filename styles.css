@@ -1291,6 +1291,16 @@ address a {
 .payment-button {
   width: fit-content;
   margin-top: 18px;
+  color: var(--forest);
+  border: 2px solid var(--cream);
+  background: var(--paper);
+  box-shadow: 0 12px 26px rgba(8, 23, 7, 0.26);
+}
+
+.payment-button:hover,
+.payment-button:focus-visible {
+  color: var(--forest);
+  background: var(--cream);
 }
 
 .payment-trust {
