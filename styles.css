@@ -97,6 +97,10 @@ a {
   color: var(--gold);
 }
 
+.nav .nav-pay-link {
+  color: var(--gold);
+}
+
 .header-call {
   display: inline-flex;
   justify-content: center;
@@ -152,6 +156,16 @@ a {
   text-align: center;
   border-radius: 8px;
   background: linear-gradient(180deg, var(--gold), var(--orange));
+}
+
+.mobile-nav .mobile-pay-link {
+  margin-top: 8px;
+  padding: 12px 16px;
+  color: var(--gold);
+  text-align: center;
+  border: 1px solid rgba(255, 247, 201, 0.38);
+  border-radius: 8px;
+  background: rgba(255, 247, 201, 0.08);
 }
 
 .hero {
@@ -1255,6 +1269,38 @@ address a {
   color: var(--gold);
 }
 
+.payment-panel {
+  margin-top: 26px;
+  padding: 22px;
+  border: 1px solid rgba(255, 247, 201, 0.22);
+  border-radius: 10px;
+  background: rgba(255, 247, 201, 0.07);
+  box-shadow: 0 18px 34px rgba(8, 23, 7, 0.2);
+}
+
+.payment-panel h3 {
+  margin: 0 0 10px;
+  color: var(--cream);
+  font-size: clamp(1.3rem, 2vw, 1.65rem);
+}
+
+.payment-panel p {
+  margin: 0;
+}
+
+.payment-button {
+  width: fit-content;
+  margin-top: 18px;
+}
+
+.payment-trust {
+  display: block;
+  margin-top: 10px;
+  color: rgba(255, 251, 232, 0.68);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
 .social-links {
   display: flex;
   flex-wrap: wrap;
@@ -1741,6 +1787,10 @@ textarea:focus {
 
   .button {
     width: 100%;
+  }
+
+  .payment-panel {
+    padding: 19px;
   }
 
   .problem-grid {
