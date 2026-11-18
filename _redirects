@@ -3,6 +3,10 @@ http://www.mistercleanmyvent.com/* https://www.mistercleanmyvent.com/:splat 301!
 
 /privacy-policy /privacy-policy/index.html 200
 /privacy-policy/ /privacy-policy/index.html 200
+/gutter-cleaning-quote /gutter-cleaning-quote/index.html 200
+/gutter-cleaning-quote/ /gutter-cleaning-quote/index.html 200
+/gutter-cleaning-thank-you /gutter-cleaning-thank-you/index.html 200
+/gutter-cleaning-thank-you/ /gutter-cleaning-thank-you/index.html 200
 
 /admin /.netlify/functions/admin 200
 /admin/ /.netlify/functions/admin 200
