@@ -1,6 +1,9 @@
 http://mistercleanmyvent.com/* https://mistercleanmyvent.com/:splat 301!
 http://www.mistercleanmyvent.com/* https://www.mistercleanmyvent.com/:splat 301!
 
+/privacy-policy /privacy-policy/index.html 200
+/privacy-policy/ /privacy-policy/index.html 200
+
 /admin /.netlify/functions/admin 200
 /admin/ /.netlify/functions/admin 200
 /api/crm/login /.netlify/functions/crm-login 200
