@@ -1,16 +1,18 @@
-/*
- * Meta Pixel is intentionally disabled until Mister Clean My Vent LLC provides
- * its real Meta Dataset/Pixel ID. Add the verified ID below only after approval.
- */
-window.MCMV_META_PIXEL_ID = "";
+/* Official Mister Clean My Vent LLC Meta Dataset/Pixel ID. */
+window.MCMV_META_PIXEL_ID = "4733805316851448";
 
 window.mcmvMetaTracking = (() => {
   let initialized = false;
+  let pageViewSent = false;
+
+  const hasAdvertisingConsent = () =>
+    window.mcmvMetaConsent?.current() === "granted" &&
+    navigator.globalPrivacyControl !== true;
 
   const configure = () => {
     const pixelId = String(window.MCMV_META_PIXEL_ID || "").trim();
     if (initialized) return true;
-    if (!pixelId) return false;
+    if (!pixelId || !hasAdvertisingConsent()) return false;
 
     /* Meta's standard loader is inserted only when a verified ID exists. */
     ((f, b, e, v, n, t, s) => {
@@ -30,14 +32,18 @@ window.mcmvMetaTracking = (() => {
       s.parentNode.insertBefore(t, s);
     })(window, document, "script", "https://connect.facebook.net/en_US/fbevents.js");
 
+    /* Do not scan form fields or send automatic advanced-matching data. */
+    window.fbq("set", "autoConfig", false, pixelId);
     window.fbq("init", pixelId);
     initialized = true;
     return true;
   };
 
   const pageView = () => {
+    if (pageViewSent) return true;
     if (!configure()) return false;
     window.fbq("track", "PageView");
+    pageViewSent = true;
     return true;
   };
 

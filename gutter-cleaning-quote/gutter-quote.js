@@ -53,6 +53,9 @@ campaignKeys.forEach((key) => {
 });
 
 window.mcmvMetaTracking?.pageView();
+window.addEventListener("mcmv:advertising-consent", (event) => {
+  if (event.detail === "granted") window.mcmvMetaTracking?.pageView();
+});
 
 const createSubmissionId = () => {
   if (window.crypto?.randomUUID) return window.crypto.randomUUID();

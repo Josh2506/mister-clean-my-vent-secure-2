@@ -38,7 +38,8 @@ if (params.get("submitted") === "1" && pendingRaw) {
   }
 }
 
-if (pendingLead) {
+const recordConfirmedLead = () => {
+  if (!pendingLead) return;
   const gaKey = `mcmv_gutter_ga_lead_${pendingLead.submissionId}`;
   if (!readStorage(window.localStorage, gaKey) && typeof window.gtag === "function") {
     window.gtag("event", "generate_lead", {
@@ -53,4 +54,9 @@ if (pendingLead) {
     const metaSent = window.mcmvMetaTracking?.lead(pendingLead.submissionId);
     if (metaSent) writeStorage(window.localStorage, metaKey, "1");
   }
-}
+};
+
+recordConfirmedLead();
+window.addEventListener("mcmv:advertising-consent", (event) => {
+  if (event.detail === "granted") recordConfirmedLead();
+});
